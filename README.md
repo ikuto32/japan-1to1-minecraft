@@ -160,7 +160,7 @@ The vegetation / land use → block mapping is adjustable in `config/landcover_m
 1. `python tools/set_repo.py OWNER/REPO` points `release.json` and the links in both READMEs at your repository (the tag is `tag` in `release.json`).
    Then `python tools/gen_datapack.py` puts the link to the web pages into the in-game menu.
 2. `python tools/package_release.py --out D:\release` writes one zip per tile (each under 2 GiB), `japan1m_base.zip`, the
-   manifests (`tiles.tsv`, `tiles.json`) and the download scripts (about 465 GB in total), and updates `docs/data/tiles.json`.
+   manifests (`tiles.tsv`, `tiles.json`) and the download scripts (about 355 GB in total), and updates `docs/data/tiles.json`.
    Add `--from-build` to rebuild each tile before zipping it, if the world folder has been played in (about 2 hours on
    32 threads; each tile built at the same time needs about 6 GB of memory, lower `--jobs` if that is too much).
    An interrupted run continues where it stopped when you run the same command again, and after changing the repository

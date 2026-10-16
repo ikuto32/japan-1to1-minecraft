@@ -156,7 +156,7 @@ python tools/gen_datapack.py      # ゲーム内ツールのデータパック�
 1. `python tools/set_repo.py OWNER/REPO` で、`release.json` とこの README のリンクを自分のリポジトリに合わせます（タグは `release.json` の `tag`）。
    続けて `python tools/gen_datapack.py` を実行すると、ゲーム内メニューにウェブページへのリンクが入ります。
 2. `python tools/package_release.py --out D:\release` で、タイルごとの zip（各 2 GiB 未満）・`japan1m_base.zip`・マニフェスト
-   （`tiles.tsv` / `tiles.json`）・ダウンロード用スクリプトを作ります（合計約 465 GB）。`docs/data/tiles.json` も更新されます。
+   （`tiles.tsv` / `tiles.json`）・ダウンロード用スクリプトを作ります（合計約 355 GB）。`docs/data/tiles.json` も更新されます。
    ゲームで遊んだワールドを配布したくない場合は `--from-build` を付けると、タイルごとに作り直してから zip にします
    （32 スレッドで約 2 時間。同時に作るタイル 1 つにつきメモリを約 6 GB 使うので、足りなければ `--jobs` で減らします）。
    途中で止まっても同じコマンドで続きから再開できます。リポジトリ名やタグを変えたときも再実行すれば、
