@@ -348,7 +348,8 @@ fn main() -> Result<()> {
             // class ids in the lc layers are 1 + the row of the table (see features::Ctx::new)
             let classes = landcover::classes(&lcmap_path, &legend)?;
             let deps = [lcmap_path.clone(), work.join("vec_net_struct.bin")];
-            world::run(&hm, &o.path("features", DEFAULT_FEATURES), &work, &world_dir, &name, &rgen::SpecTable::new(&classes), &deps, &ro)?;
+            let content = [lcmap_path.clone(), work.join("veg_legend.csv")];
+            world::run(&hm, &o.path("features", DEFAULT_FEATURES), &work, &world_dir, &name, &rgen::SpecTable::new(&classes), &deps, &content, &ro)?;
         }
         "base" => {
             // base --world DIR : fresh level.dat, data packs, icon and ATTRIBUTION (no regions)

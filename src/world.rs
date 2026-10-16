@@ -409,6 +409,143 @@ pub fn tadd(a: &std::sync::atomic::AtomicU64, t: std::time::Instant) {
     a.fetch_add(t.elapsed().as_micros() as u64, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Bump when the generator writes something else from the same inputs: the
+/// next `world` run then rebuilds every region once.
+pub const GEN_VERSION: u64 = 2;
+
+/// Fast 64-bit hash for change detection (not for security).
+struct Hasher(u64);
+
+impl Hasher {
+    fn new(seed: u64) -> Self {
+        Hasher(seed ^ 0x9E37_79B9_7F4A_7C15)
+    }
+    #[inline]
+    fn word(&mut self, w: u64) {
+        self.0 = (self.0 ^ w).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(29);
+    }
+    fn bytes(&mut self, b: &[u8]) {
+        let mut it = b.chunks_exact(8);
+        for c in &mut it {
+            self.word(u64::from_le_bytes(c.try_into().unwrap()));
+        }
+        let mut last = [0u8; 8];
+        last[..it.remainder().len()].copy_from_slice(it.remainder());
+        self.word(u64::from_le_bytes(last));
+        self.word(b.len() as u64);
+    }
+    fn slice<T: Copy>(&mut self, v: &[T]) {
+        // SAFETY: plain numbers (u8/u16/u32/f32) read as their bytes
+        self.bytes(unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, std::mem::size_of_val(v)) });
+    }
+    fn finish(&self) -> u64 {
+        let mut x = self.0;
+        x ^= x >> 33;
+        x = x.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
+        x ^ (x >> 33)
+    }
+}
+
+/// Everything a region is built from: the heightmap and feature windows,
+/// the building records and trees in them, the bridge/tunnel profiles
+/// around, and (in `global`) the mapping table and the generator version.
+fn region_digest(global: u64, inp: &RegionInput, fw: &crate::rgen::FeatWin, structs: &[crate::vfeat::VFeat]) -> u64 {
+    let mut h = Hasher::new(global);
+    h.word(inp.ox as u64);
+    h.word(inp.oz as u64);
+    h.slice(&inp.h);
+    h.slice(&inp.k);
+    h.slice(&fw.lc);
+    h.slice(&fw.bldg);
+    h.slice(&fw.roof);
+    h.slice(&fw.strct);
+    h.slice(&fw.road);
+    h.slice(&fw.roadh);
+    h.slice(&fw.rail);
+    h.slice(&fw.railh);
+    h.slice(&fw.tcov);
+    h.slice(&fw.lake);
+    h.slice(&fw.rowdir);
+    h.slice(&fw.canopy);
+    for t in &fw.trees {
+        h.word(t.0 as u64);
+        h.word(t.1 as u64);
+        h.word(t.2.to_bits() as u64 | (t.3 as u64) << 32);
+    }
+    let mut seen = vec![false; fw.bld.len()];
+    for &k in &fw.bldg {
+        if k != 0 && !seen[k as usize] {
+            seen[k as usize] = true;
+            let r = &fw.bld[k as usize];
+            h.word(k as u64);
+            h.word(r.src as u64 | (r.usage as u64) << 8 | (r.roof as u64) << 16 | (r.ridge_x as u64) << 24 | (r.storeys as u64) << 32);
+            h.word(r.base.to_bits() as u64 | (r.height.to_bits() as u64) << 32);
+            h.word(r.seed as u64);
+        }
+    }
+    for f in structs {
+        h.word(f.id);
+        h.word(f.class as u64 | (f.flags as u64) << 16 | (f.area as u64) << 32);
+        h.slice(&f.nums);
+        h.bytes(f.text.as_bytes());
+        for p in &f.parts {
+            h.slice(p);
+        }
+        for z in &f.zs {
+            h.slice(z);
+        }
+    }
+    h.finish()
+}
+
+/// The digests the regions of a world were last built from (work folder).
+struct Digests {
+    path: PathBuf,
+    map: std::sync::Mutex<HashMap<(i64, i64), u64>>,
+    /// written by another generator version: every region is checked
+    stale: bool,
+}
+
+impl Digests {
+    fn load(path: PathBuf) -> Digests {
+        let mut map = HashMap::new();
+        let mut stale = true;
+        if let Ok(d) = std::fs::read(&path) {
+            if d.len() >= 8 && u64::from_le_bytes(d[..8].try_into().unwrap()) == GEN_VERSION {
+                stale = false;
+                for r in d[8..].chunks_exact(16) {
+                    let rx = i32::from_le_bytes(r[..4].try_into().unwrap()) as i64;
+                    let rz = i32::from_le_bytes(r[4..8].try_into().unwrap()) as i64;
+                    map.insert((rx, rz), u64::from_le_bytes(r[8..].try_into().unwrap()));
+                }
+            }
+        }
+        Digests { path, map: std::sync::Mutex::new(map), stale }
+    }
+    fn get(&self, k: (i64, i64)) -> Option<u64> {
+        self.map.lock().unwrap().get(&k).copied()
+    }
+    fn set(&self, k: (i64, i64), d: u64) {
+        self.map.lock().unwrap().insert(k, d);
+    }
+    fn save(&self) -> Result<()> {
+        let map = self.map.lock().unwrap();
+        let mut v: Vec<(&(i64, i64), &u64)> = map.iter().collect();
+        v.sort();
+        let mut b = Vec::with_capacity(8 + 16 * v.len());
+        b.extend_from_slice(&GEN_VERSION.to_le_bytes());
+        for ((rx, rz), d) in v {
+            b.extend_from_slice(&(*rx as i32).to_le_bytes());
+            b.extend_from_slice(&(*rz as i32).to_le_bytes());
+            b.extend_from_slice(&d.to_le_bytes());
+        }
+        let tmp = self.path.with_extension("bin.tmp");
+        std::fs::write(&tmp, &b)?;
+        std::fs::rename(&tmp, &self.path)?;
+        Ok(())
+    }
+}
+
 /// A region is up to date when its file is newer than every heightmap tile
 /// it reads (its own tile, plus the neighbouring tile when it lies on a tile edge).
 fn region_up_to_date(path: &Path, hm_dir: &Path, fs: &crate::chunk::FeatSet, global: Option<std::time::SystemTime>, rx: i64, rz: i64, cache: &std::sync::Mutex<HashMap<(i64, i64), Option<std::time::SystemTime>>>) -> bool {
@@ -480,12 +617,24 @@ pub struct RunOpts {
 }
 
 /// Write the whole world.
-pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str, st: &crate::rgen::SpecTable, global_deps: &[PathBuf], o: &RunOpts) -> Result<()> {
+pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str, st: &crate::rgen::SpecTable, global_deps: &[PathBuf], content_deps: &[PathBuf], o: &RunOpts) -> Result<()> {
     let t0 = std::time::Instant::now();
     let fs = crate::chunk::FeatSet::new(feat_dir);
     let structs = crate::vfeat::TiledReader::open(&work.join("vec_net_struct.bin"))?;
     // newest global input (mapping table, bridge/tunnel profiles): regions older than it are rebuilt
     let global_mtime = global_deps.iter().filter_map(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok()).max();
+    // a region whose file is older than its inputs is rebuilt only when the
+    // inputs themselves changed since it was built (digests in the work folder)
+    let digests = Digests::load(work.join(format!("region_digests_{}.bin", world.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())));
+    let global = {
+        let mut h = Hasher::new(GEN_VERSION);
+        h.word(DATA_VERSION as u64);
+        h.word(o.level as u64);
+        for p in content_deps {
+            h.bytes(&std::fs::read(p).unwrap_or_default());
+        }
+        h.finish()
+    };
     let reg_dir = world.join("region");
     std::fs::create_dir_all(&reg_dir)?;
     write_datapack(world)?;
@@ -538,10 +687,11 @@ pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str
     let written = std::sync::atomic::AtomicUsize::new(0);
     let chunks = std::sync::atomic::AtomicUsize::new(0);
     let bytes = std::sync::atomic::AtomicU64::new(0);
+    let same = std::sync::atomic::AtomicUsize::new(0);
     for (_, tile_regions) in by_tile {
     tile_regions.par_iter().try_for_each(|&(rx, rz)| -> Result<()> {
         let path = reg_dir.join(format!("r.{rx}.{rz}.mca"));
-        if !o.force && region_up_to_date(&path, hm_dir, &fs, global_mtime, rx, rz, &mtimes) {
+        if !o.force && !digests.stale && region_up_to_date(&path, hm_dir, &fs, global_mtime, rx, rz, &mtimes) {
             done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return Ok(());
         }
@@ -560,7 +710,16 @@ pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str
                 .collect();
             let t = std::time::Instant::now();
             let ex = crate::chunk::Extra { fw: fs.window(inp.ox, inp.oz), st, structs: tile_structs };
+            let dg = region_digest(global, &inp, &ex.fw, &ex.structs);
             tadd(&T_FEAT, t);
+            if !o.force && digests.get((rx, rz)) == Some(dg) && path.exists() {
+                // built from these very inputs: only mark it current
+                std::fs::File::options().write(true).open(&path)?.set_modified(std::time::SystemTime::now())?;
+                same.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                return Ok(());
+            }
+            digests.set((rx, rz), dg);
             if let Some((data, n)) = crate::chunk::build_region(&inp, &ex, rx, rz, o.level)? {
                 let t = std::time::Instant::now();
                 let tmp = path.with_extension("mca.tmp");
@@ -586,6 +745,7 @@ pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str
         }
         Ok(())
     })?;
+    digests.save()?;
     }
     let g = |a: &std::sync::atomic::AtomicU64| a.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e6;
     eprintln!(
@@ -602,11 +762,12 @@ pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str
         g(&T_WRITE)
     );
     eprintln!(
-        "world: done in {:.0}s: {} region files, {} chunks, {:.1} GB",
+        "world: done in {:.0}s: {} region files, {} chunks, {:.1} GB ({} older than their inputs but built from the same, kept)",
         t0.elapsed().as_secs_f64(),
         written.into_inner(),
         chunks.into_inner(),
-        bytes.into_inner() as f64 / 1e9
+        bytes.into_inner() as f64 / 1e9,
+        same.into_inner()
     );
     Ok(())
 }

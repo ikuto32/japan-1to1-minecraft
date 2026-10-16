@@ -142,7 +142,7 @@ pwsh -File V:\projects\minecraft_1m_japan\build_all.ps1
 | 9 | `jpdem trees` | 静岡県の単木ポイントと、点群（LAS）からの樹冠高を作成 |
 | 10 | `jpdem lcmap` | 対応表 `config\landcover_map.csv` に無い凡例の行を追加（既存の行・調整はそのまま） |
 | 11 | `jpdem features [--tiles "X,Z;..."]` | 特徴量タイル（土地被覆・建物・屋根・道路・鉄道・樹木・湖底・海底など）を作成。中身が変わったタイルだけ書き換える |
-| 12 | `jpdem world [--world C:\...\japan_dem_1m]` | ワールドを出力（高さマップ・特徴量タイル・対応表・橋梁データより新しい region はスキップ。`--force` で全再生成。`--around "X,Z,半径"` / `--regions` で一部だけ） |
+| 12 | `jpdem world [--world C:\...\japan_dem_1m]` | ワールドを出力（高さマップ・特徴量タイル・対応表・橋梁データより新しい region はスキップ。古くても、その region が読む入力の中身が前回作ったときと同じなら作り直さない。`--force` で全再生成。`--around "X,Z,半径"` / `--regions` で一部だけ） |
 
 確認用: `jpdem hmprobe X Z`（高さマップの値）、`jpdem proj 緯度 経度`（Minecraft 座標への変換）、
 `jpdem verify ...`（ワールドの検証用ツール。`verify render <region フォルダ> rx rz 幅 高さ 出力.png [間引き]` で上から見た図、
@@ -291,7 +291,11 @@ pwsh -File V:\projects\minecraft_1m_japan\build_all.ps1
   既存のタイルの番号は変わりません）。
 - 高さマップは全タイルを再計算しますが、中身が変わらないタイルは書き換えません。境界付近のタイル
   （以前は範囲外だった部分を含むもの）だけが更新されます。
-- ワールドは、入力タイルが更新された region だけ作り直します。`level.dat`（プレイヤーの位置や持ち物を含む）は上書きしません。
+- ワールドは、入力タイルが更新された region のうち、その region が読む入力（高さマップ・特徴量の窓、建物・樹木、橋梁・トンネルの
+  縦断形、対応表）の中身が前回と変わったものだけを作り直します（入力のダイジェストを作業フォルダの
+  `region_digests_<ワールド名>.bin` に記録。タイルの一部だけが変わったときも、変わらない region は作り直しません）。
+  生成の処理を変えたときは `world.rs` の `GEN_VERSION` を上げると、次の実行で全 region が一度作り直されます。
+  `level.dat`（プレイヤーの位置や持ち物を含む）は上書きしません。
 
 ---
 
@@ -357,7 +361,7 @@ pwsh -File V:\projects\minecraft_1m_japan\build_all.ps1
 
 `config\landcover_map.csv`（UTF-8 BOM 付き CSV。Excel で編集できます）が、植生図の凡例・JAXA の区分・OSM の土地利用と
 Minecraft での表現の対応表です。行を書き換えて `jpdem features` と `jpdem world` を実行し直すと反映されます
-（対応表が新しくなると、全 region が作り直しの対象になります）。新しい凡例が出てきたときは `jpdem lcmap`（または
+（対応表が新しくなると、全 region が作り直しの対象になります。中身を変えずに保存しただけなら作り直しません）。新しい凡例が出てきたときは `jpdem lcmap`（または
 `features`）が行を末尾に追加します（既存の行と調整内容はそのまま）。
 
 | 列 | 意味 | 例 |
