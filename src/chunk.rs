@@ -219,80 +219,6 @@ impl FeatSet {
     }
 }
 
-// ---------------------------------------------------------------- sky light (terrain chunks)
-
-fn water_light_extras(cols: &[Col]) -> HashMap<u32, Vec<(i32, u8)>> {
-    let n = RW;
-    let vert = |c: &Col, y: i32| -> u8 { (15 - (c.w - y + 1)).max(0) as u8 };
-    let mut extra: HashMap<(u32, i32), u8> = HashMap::new();
-    let mut queue: Vec<Vec<(u32, i32)>> = vec![Vec::new(); 16];
-    for z in 0..n {
-        for x in 0..n {
-            let i = z * n + x;
-            let c = &cols[i];
-            if c.out || c.w <= c.g {
-                continue;
-            }
-            for (dx, dz) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
-                let (xx, zz) = (x as i64 + dx, z as i64 + dz);
-                if xx < 0 || zz < 0 || xx >= n as i64 || zz >= n as i64 {
-                    continue;
-                }
-                let nb = &cols[zz as usize * n + xx as usize];
-                let y0 = if nb.out { MIN_Y } else { nb.top_y() + 1 };
-                for y in y0.max(c.g + 1)..=c.w {
-                    if 14 > vert(c, y) {
-                        let e = extra.entry((i as u32, y)).or_insert(0);
-                        if *e < 14 {
-                            *e = 14;
-                            queue[14].push((i as u32, y));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    for lvl in (2..=14u8).rev() {
-        let items = std::mem::take(&mut queue[lvl as usize]);
-        for (i, y) in items {
-            if extra.get(&(i, y)).copied().unwrap_or(0) != lvl {
-                continue;
-            }
-            let (x, z) = (i as usize % n, i as usize / n);
-            let nl = lvl - 1;
-            let try_push = |j: usize, yy: i32, extra: &mut HashMap<(u32, i32), u8>, queue: &mut Vec<Vec<(u32, i32)>>| {
-                let c = &cols[j];
-                if c.out || yy <= c.g || yy > c.w || nl <= vert(c, yy) {
-                    return;
-                }
-                let e = extra.entry((j as u32, yy)).or_insert(0);
-                if *e < nl {
-                    *e = nl;
-                    queue[nl as usize].push((j as u32, yy));
-                }
-            };
-            try_push(i as usize, y - 1, &mut extra, &mut queue);
-            try_push(i as usize, y + 1, &mut extra, &mut queue);
-            if x > 0 {
-                try_push(i as usize - 1, y, &mut extra, &mut queue);
-            }
-            if x + 1 < n {
-                try_push(i as usize + 1, y, &mut extra, &mut queue);
-            }
-            if z > 0 {
-                try_push(i as usize - n, y, &mut extra, &mut queue);
-            }
-            if z + 1 < n {
-                try_push(i as usize + n, y, &mut extra, &mut queue);
-            }
-        }
-    }
-    let mut out: HashMap<u32, Vec<(i32, u8)>> = HashMap::new();
-    for ((i, y), l) in extra {
-        out.entry(i).or_default().push((y, l));
-    }
-    out
-}
 
 // ---------------------------------------------------------------- chunk NBT
 
@@ -341,7 +267,7 @@ impl Pre {
 }
 
 /// Serialize one chunk. `cols`/`ovs` are the 256 columns (index z*16+x).
-pub fn chunk_nbt(pre: &mut Pre, cx: i32, cz: i32, cols: &[Col; 256], ovs: &[&[(i32, BlockId)]; 256], extras: &[Option<&Vec<(i32, u8)>>; 256], biome_names: &[String]) -> Vec<u8> {
+pub fn chunk_nbt(pre: &mut Pre, cx: i32, cz: i32, cols: &[Col; 256], ovs: &[&[(i32, BlockId)]; 256], sky: &crate::light::SkyLight, wis: &[usize; 256], biome_names: &[String]) -> Vec<u8> {
     let ids = Ids::get();
     let mut w = W::new();
     w.begin_root();
@@ -353,16 +279,20 @@ pub fn chunk_nbt(pre: &mut Pre, cx: i32, cz: i32, cols: &[Col; 256], ovs: &[&[(i
     w.long("LastUpdate", 0);
     w.long("InhabitedTime", 0);
     let has_ov = ovs.iter().any(|o| !o.is_empty());
-    // structures/plants: let Minecraft light the chunk on load
-    w.byte("isLightOn", if has_ov { 0 } else { 1 });
+    // sky light is written for every section that needs it (light::compute)
+    w.byte("isLightOn", 1);
     let any: Vec<&Col> = cols.iter().filter(|c| !c.out).collect();
     let ov_max = ovs.iter().flat_map(|o| o.iter().map(|e| e.0)).max().unwrap_or(MIN_Y);
     let ov_min = ovs.iter().flat_map(|o| o.iter().map(|e| e.0)).min().unwrap_or(i32::MAX);
     let top = any.iter().map(|c| c.top_y()).max().unwrap_or(MIN_Y).max(ov_max);
-    let top_sec = top.div_euclid(16);
     let has_out = cols.iter().any(|c| c.out);
-    let low_open = if has_out { MIN_Y + 1 } else { any.iter().map(|c| c.g + 1).min().unwrap_or(MIN_Y) };
-    let low_open_sec = low_open.div_euclid(16);
+    // sections with stored sky light: Minecraft takes a section without it
+    // as the bottom layer of the next stored section above (15 above all),
+    // so from just below the lowest lit block of the solid columns (the open
+    // void columns are 15 all the way down) to one above the top
+    let lit_lo = (0..256).filter(|&i| !cols[i].out).map(|i| sky.lit_from(wis[i])).min().unwrap_or(MIN_Y);
+    let light_lo = ((lit_lo - 1).max(MIN_Y)).div_euclid(16);
+    let light_hi = ((0..256).map(|i| sky.sky_from(wis[i])).max().unwrap_or(MIN_Y) - 1).max(MIN_Y).div_euclid(16) + 1;
     let layer_low = any.iter().map(|c| c.layer_bottom()).min().unwrap_or(MIN_Y);
     let max_g = any.iter().map(|c| c.g).max().unwrap_or(MIN_Y);
     let min_w = any.iter().map(|c| c.w).min().unwrap_or(MIN_Y);
@@ -466,46 +396,13 @@ pub fn chunk_nbt(pre: &mut Pre, cx: i32, cz: i32, cols: &[Col; 256], ovs: &[&[(i
             }
         }
         w.buf.extend_from_slice(&biome_bytes);
-        if !has_ov && sy >= low_open_sec && sy <= top_sec + 1 {
-            if y0 > top {
-                light.fill(0xff);
-            } else {
-                light.fill(0);
-                #[inline]
-                fn set(light: &mut [u8], idx: usize, v: u8) {
-                    light[idx >> 1] |= if idx & 1 == 0 { v } else { v << 4 };
-                }
-                for i in 0..256 {
-                    let c = &cols[i];
-                    if c.out {
-                        for ly in 0..16 {
-                            set(&mut light, ly * 256 + i, 15);
-                        }
-                        continue;
-                    }
-                    for y in (c.top_y() + 1).max(y0)..=y1 {
-                        set(&mut light, (y - y0) as usize * 256 + i, 15);
-                    }
-                    if c.w > c.g {
-                        for y in (c.g + 1).max(y0).max(c.w - 13)..=c.w.min(y1) {
-                            set(&mut light, (y - y0) as usize * 256 + i, (14 - (c.w - y)) as u8);
-                        }
-                    }
-                    if let Some(ex) = extras[i] {
-                        for &(y, l) in ex.iter() {
-                            if y >= y0 && y <= y1 {
-                                let idx = (y - y0) as usize * 256 + i;
-                                let bt = &mut light[idx >> 1];
-                                if idx & 1 == 0 {
-                                    if l > *bt & 0x0f {
-                                        *bt = (*bt & 0xf0) | l;
-                                    }
-                                } else if l > *bt >> 4 {
-                                    *bt = (*bt & 0x0f) | (l << 4);
-                                }
-                            }
-                        }
-                    }
+        if sy >= light_lo && sy <= light_hi {
+            light.fill(0);
+            for i in 0..256 {
+                for ly in 0..16 {
+                    let l = sky.get(wis[i], y0 + ly as i32);
+                    let idx = ly * 256 + i;
+                    light[idx >> 1] |= if idx & 1 == 0 { l } else { l << 4 };
                 }
             }
             w.byte_array("SkyLight", &light);
@@ -617,9 +514,10 @@ pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32)
     ov.finish();
     tadd(&T_DECOR, t);
     let t = std::time::Instant::now();
-    let extras = water_light_extras(&cols);
-    tadd(&T_LIGHT, t);
     let mut pre = Pre::new();
+    let props: Vec<crate::blocks::LightProp> = pre.defs.iter().map(|d| d.light).collect();
+    let sky = crate::light::compute(RW, &cols, &ov, &props, rgen::Ids::get());
+    tadd(&T_LIGHT, t);
     let mut comp = libdeflater::Compressor::new(libdeflater::CompressionLvl::new(level as i32).unwrap_or_default());
     let mut cbuf: Vec<u8> = Vec::new();
     let mut chunks: Vec<Option<Vec<u8>>> = vec![None; 1024];
@@ -628,14 +526,14 @@ pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32)
         for lx in 0..32 {
             let mut cc = [rgen::OUT_COL; 256];
             let mut ovs: [&[(i32, BlockId)]; 256] = [&[]; 256];
-            let mut exs: [Option<&Vec<(i32, u8)>>; 256] = [None; 256];
+            let mut wis = [0usize; 256];
             let mut any = false;
             for z in 0..16 {
                 for x in 0..16 {
                     let wi = (HALO + lz * 16 + z) * RW + HALO + lx * 16 + x;
                     cc[z * 16 + x] = cols[wi];
                     ovs[z * 16 + x] = &ov.v[wi];
-                    exs[z * 16 + x] = extras.get(&(wi as u32));
+                    wis[z * 16 + x] = wi;
                     any |= !cols[wi].out;
                 }
             }
@@ -643,7 +541,7 @@ pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32)
                 continue;
             }
             let t = std::time::Instant::now();
-            let raw = chunk_nbt(&mut pre, (rx * 32 + lx as i64) as i32, (rz * 32 + lz as i64) as i32, &cc, &ovs, &exs, &ex.st.biome_names);
+            let raw = chunk_nbt(&mut pre, (rx * 32 + lx as i64) as i32, (rz * 32 + lz as i64) as i32, &cc, &ovs, &sky, &wis, &ex.st.biome_names);
             tadd(&T_NBT, t);
             let t = std::time::Instant::now();
             cbuf.resize(comp.zlib_compress_bound(raw.len()), 0);

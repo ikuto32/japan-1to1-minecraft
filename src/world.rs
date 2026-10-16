@@ -589,7 +589,7 @@ pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str
     }
     let g = |a: &std::sync::atomic::AtomicU64| a.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e6;
     eprintln!(
-        "world: thread-seconds input {:.1}, features {:.1}, columns {:.1}, structures {:.1}, buildings {:.1}, patterns+trees {:.1}, water light {:.1}, chunk nbt {:.1}, zlib {:.1}, write {:.1}",
+        "world: thread-seconds input {:.1}, features {:.1}, columns {:.1}, structures {:.1}, buildings {:.1}, patterns+trees {:.1}, sky light {:.1}, chunk nbt {:.1}, zlib {:.1}, write {:.1}",
         g(&T_INPUT),
         g(&T_FEAT),
         g(&T_COLS),

@@ -108,7 +108,7 @@ If you try to go to a tile you have not downloaded, the data pack commands cance
 
 ### Tips
 
-- Chunks with buildings, roads or trees get their lighting computed by the game when first loaded, so they may look dark for a moment.
+- Every chunk is written with its sky light computed, so the game does not have to light chunks when they are first loaded.
 - Above about 2,950 m Mt. Fuji is snow; above the tree line (about 2,500 m) it is rock and scree.
 - Rice paddies are shown flooded, with rows of seagrass as the rice.
 

@@ -128,6 +128,8 @@ pub fn compare_light(a: &Path, b: &Path, verbose: usize) -> Result<()> {
     let mut bad_open = 0usize;
     let mut bad_solid = 0usize;
     let mut shown = 0;
+    // differences by block (name, ours, vanilla) -> count
+    let mut kinds: std::collections::BTreeMap<(String, u8, u8), usize> = std::collections::BTreeMap::new();
     let mut compared_chunks = 0usize;
     for (i, ta) in &ca {
         let Some((_, tb)) = cb.iter().find(|(j, _)| j == i) else { continue };
@@ -171,7 +173,8 @@ pub fn compare_light(a: &Path, b: &Path, verbose: usize) -> Result<()> {
                     } else {
                         bad_solid += 1;
                     }
-                    if open && shown < verbose {
+                    *kinds.entry((name.trim_start_matches("minecraft:").to_string(), va[idx], vb[idx])).or_default() += 1;
+                    if shown < verbose {
                         let (x, z, y) = (idx % 16, (idx / 16) % 16, idx / 256);
                         println!(
                             "  diff at X={} Y={} Z={} ({}): ours {} vanilla {}",
@@ -186,6 +189,13 @@ pub fn compare_light(a: &Path, b: &Path, verbose: usize) -> Result<()> {
                     }
                 }
             }
+        }
+    }
+    if verbose > 0 {
+        let mut v: Vec<_> = kinds.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        for ((name, a, b), n) in v.iter().take(verbose) {
+            println!("  {n:8} x {name}: ours {a} vanilla {b}");
         }
     }
     println!("compared {} blocks in {} chunks: {} differ in air/water, {} differ inside solid blocks", total, compared_chunks, bad_open, bad_solid);

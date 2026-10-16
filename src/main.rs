@@ -16,6 +16,7 @@ mod bathy;
 mod blocks;
 mod chunk;
 mod infra;
+mod light;
 mod raster;
 mod nbt;
 mod proj;
