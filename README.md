@@ -7,7 +7,7 @@ Shizuoka and Yamanashi prefectures together with Tokyo, Kanagawa, eastern Aichi 
 Authority of Japan (GSI) and open data for roads, railways, buildings and vegetation.
 
 - Area: latitude 34–36°N, longitude 137–140°E (about 270 km × 220 km, sea included)
-- About 1 TB in total — **download only the area you want, tile by tile (about 10 km square)**
+- About 1.1 TB in total (470 GB of downloads) — **download only the area you want, tile by tile (about 10 km square)**
 - 🗾 **[Tile selector](https://ikuto32.github.io/japan-1to1-minecraft/tiles.html)** · 🧭 **[Teleport command maker](https://ikuto32.github.io/japan-1to1-minecraft/teleport.html)**
 
 ![Around Shizuoka Station (left: the world from above, right: GSI aerial photo)](docs/check/01_shizuoka_station.png)
@@ -40,7 +40,7 @@ Authority of Japan (GSI) and open data for roads, railways, buildings and vegeta
 ## Requirements
 
 - **Minecraft Java Edition 1.21.11** exactly (other versions cannot open it or break the terrain height)
-- Disk: about 0.03–1.7 GB per tile once unpacked (sea tiles are small); about 970 GB for everything
+- Disk: about 0.03–2.9 GB per tile once unpacked (sea tiles are small); about 1.1 TB for everything
 - 4 GB or more of memory for Minecraft. The world is 10× taller than normal, so a render distance of 8–12 chunks is recommended
 
 ## Download and install
@@ -164,7 +164,7 @@ The vegetation / land use → block mapping is adjustable in `config/landcover_m
 1. `python tools/set_repo.py OWNER/REPO` points `release.json` and the links in both READMEs at your repository (the tag is `tag` in `release.json`).
    Then `python tools/gen_datapack.py` puts the link to the web pages into the in-game menu.
 2. `python tools/package_release.py --out D:\release` writes one zip per tile (each under 2 GiB), `japan1m_base.zip`, the
-   manifests (`tiles.tsv`, `tiles.json`) and the download scripts (about 355 GB in total), and updates `docs/data/tiles.json`.
+   manifests (`tiles.tsv`, `tiles.json`) and the download scripts (about 470 GB in total), and updates `docs/data/tiles.json`.
    Add `--from-build` to rebuild each tile before zipping it, if the world folder has been played in (about 2 hours on
    32 threads; each tile built at the same time needs about 6 GB of memory, lower `--jobs` if that is too much).
    An interrupted run continues where it stopped when you run the same command again, and after changing the repository

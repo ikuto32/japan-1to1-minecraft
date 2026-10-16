@@ -6,7 +6,7 @@
 **1 ブロック = 1 m** で再現した **Minecraft Java Edition 1.21.11** 用のワールドです。
 
 - 範囲: 北緯 34〜36°・東経 137〜140°（東西 約 270 km × 南北 約 220 km、海を含む）
-- 全体 約 1 TB。**遊びたい範囲（約 10 km 四方のタイル）だけを選んでダウンロード**できます
+- 全体 約 1.1 TB（ダウンロードは約 470 GB）。**遊びたい範囲（約 10 km 四方のタイル）だけを選んでダウンロード**できます
 - 🗾 **[タイル選択ページ](https://ikuto32.github.io/japan-1to1-minecraft/tiles.html)** ・ 🧭 **[移動コマンド作成ページ](https://ikuto32.github.io/japan-1to1-minecraft/teleport.html)**
 
 ![静岡駅周辺（左: ワールドを真上から、右: 国土地理院の航空写真）](docs/check/01_shizuoka_station.png)
@@ -39,7 +39,7 @@
 ## 必要なもの
 
 - **Minecraft Java Edition 1.21.11**（このバージョン専用です。ほかのバージョンでは開けないか、地形の高さが壊れます）
-- ディスク: タイル 1 枚あたり展開後 約 0.03〜1.7 GB（海のタイルは小さい）。全体を入れると約 970 GB
+- ディスク: タイル 1 枚あたり展開後 約 0.03〜2.9 GB（海のタイルは小さい）。全体を入れると約 1.1 TB
 - メモリ 4 GB 以上を Minecraft に割り当て推奨。ワールドの高さが通常の 10 倍あるので、描画距離は 8〜12 チャンク程度がおすすめです
 
 ## ダウンロードとインストール
@@ -160,7 +160,7 @@ python tools/gen_datapack.py      # ゲーム内ツールのデータパック�
 1. `python tools/set_repo.py OWNER/REPO` で、`release.json` とこの README のリンクを自分のリポジトリに合わせます（タグは `release.json` の `tag`）。
    続けて `python tools/gen_datapack.py` を実行すると、ゲーム内メニューにウェブページへのリンクが入ります。
 2. `python tools/package_release.py --out D:\release` で、タイルごとの zip（各 2 GiB 未満）・`japan1m_base.zip`・マニフェスト
-   （`tiles.tsv` / `tiles.json`）・ダウンロード用スクリプトを作ります（合計約 355 GB）。`docs/data/tiles.json` も更新されます。
+   （`tiles.tsv` / `tiles.json`）・ダウンロード用スクリプトを作ります（合計約 470 GB）。`docs/data/tiles.json` も更新されます。
    ゲームで遊んだワールドを配布したくない場合は `--from-build` を付けると、タイルごとに作り直してから zip にします
    （32 スレッドで約 2 時間。同時に作るタイル 1 つにつきメモリを約 6 GB 使うので、足りなければ `--jobs` で減らします）。
    途中で止まっても同じコマンドで続きから再開できます。リポジトリ名やタグを変えたときも再実行すれば、

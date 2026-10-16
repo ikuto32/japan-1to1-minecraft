@@ -38,7 +38,7 @@ const I18N = {
     tile_missing_note: "移動先のタイルをダウンロードしていないと、何もない場所に出ます（データパックのコマンドは移動しません）。",
     // home
     home_lead: "国土地理院の 1 m 標高データと、道路・鉄道・建物・植生のオープンデータから作った、静岡県・山梨県・東京都などを 1 ブロック = 1 m で再現した Minecraft Java Edition 1.21.11 のワールドです。",
-    home_tiles: "範囲を選んでダウンロード", home_tiles_p: "全体は約 1 TB あるので、遊びたい場所のタイル（約 10 km 四方）だけを選んで落とせます。",
+    home_tiles: "範囲を選んでダウンロード", home_tiles_p: "全体は約 1.1 TB（ダウンロードは約 470 GB）あるので、遊びたい場所のタイル（約 10 km 四方）だけを選んで落とせます。",
     home_tp: "移動コマンドを作る", home_tp_p: "地図や地名から、その場所へ移動する /tp コマンドを作ります。",
     home_game: "ゲーム内メニュー", home_game_p: "チャットで /function jp:menu と入力すると、主要地点への移動、標高・緯度経度の表示、夜間視覚などが使えます。",
     open: "開く", gallery: "上から見た確認画像（左: ワールド、右: 国土地理院の航空写真）",
@@ -78,7 +78,7 @@ const I18N = {
     tp_note: "The ground Y comes from the GSI elevation API, so on buildings it can be 1–2 blocks off. The data pack command lands you on the top block at that position.",
     tile_missing_note: "If you have not downloaded the destination tile, you arrive in empty space (the data pack command will not move you).",
     home_lead: "A Minecraft Java Edition 1.21.11 world of Shizuoka, Yamanashi, Tokyo and the surrounding area at 1 block = 1 m, made from the 1 m elevation data of the Geospatial Information Authority of Japan and open data for roads, railways, buildings and vegetation.",
-    home_tiles: "Pick an area and download", home_tiles_p: "The whole world is about 1 TB, so you download only the tiles (about 10 km square) you want to play in.",
+    home_tiles: "Pick an area and download", home_tiles_p: "The whole world is about 1.1 TB (470 GB of downloads), so you download only the tiles (about 10 km square) you want to play in.",
     home_tp: "Make teleport commands", home_tp_p: "Get the /tp command for any place from the map or a place name.",
     home_game: "In-game menu", home_game_p: "Type /function jp:menu in chat for landmarks, an elevation and latitude/longitude display, night vision and more.",
     open: "Open", gallery: "Top-down check images (left: the world, right: GSI aerial photo)",
