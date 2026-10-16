@@ -284,6 +284,32 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> TileOut {
             }
         }
     });
+    // basins the sea polygons leave out (port slips, docks, dredged channels):
+    // DEM ground more than 3 m below sea level that joins the sea is sea, its
+    // DEM value kept for the sea bed (land below sea level behind sea walls,
+    // about -1 to -2.5 m in Tokyo, stays land)
+    {
+        let deep = |c: u8, h: f32| matches!(c, K_LAND1 | K_LAND5) && h < -3.0;
+        let mut stack: Vec<usize> = Vec::new();
+        for i in 0..n * n {
+            if cls[i] != K_SEA {
+                continue;
+            }
+            let (x, z) = (i % n, i / n);
+            if (x > 0 && deep(cls[i - 1], hgt[i - 1])) || (x + 1 < n && deep(cls[i + 1], hgt[i + 1])) || (z > 0 && deep(cls[i - n], hgt[i - n])) || (z + 1 < n && deep(cls[i + n], hgt[i + n])) {
+                stack.push(i);
+            }
+        }
+        while let Some(i) = stack.pop() {
+            let (x, z) = (i % n, i / n);
+            for j in [(x > 0).then(|| i - 1), (x + 1 < n).then(|| i + 1), (z > 0).then(|| i - n), (z + 1 < n).then(|| i + n)].into_iter().flatten() {
+                if deep(cls[j], hgt[j]) {
+                    cls[j] = K_SEA;
+                    stack.push(j);
+                }
+            }
+        }
+    }
     // inland water without a 5m level (small 1m-only ponds/streams): lowest
     // land within 6 m
     let need: bool = cls.par_iter().zip(hgt.par_iter()).any(|(k, h)| *k == K_INLAND && h.is_nan());
