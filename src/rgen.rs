@@ -79,7 +79,7 @@ impl Ids {
             tuff: b("tuff"),
             podzol: b("podzol[snowy=false]"),
             mud: b("mud"),
-            farmland: b("farmland[moisture=7]"),
+            farmland: b("farmland[moisture=0]"),
             seagrass: b("seagrass"),
             glass: b("glass"),
             smooth_stone: b("smooth_stone"),
@@ -96,7 +96,7 @@ impl Ids {
             large_fern_hi: b("large_fern[half=upper]"),
             tea_leaves: b("oak_leaves[distance=7,persistent=true,waterlogged=false]"),
             daylight: b("daylight_detector[inverted=false,power=0]"),
-            grave: b("polished_andesite_wall[east=none,north=none,south=none,up=true,waterlogged=false,west=none]"),
+            grave: b("andesite_wall[east=none,north=none,south=none,up=true,waterlogged=false,west=none]"),
             crops: [b("wheat[age=7]"), b("carrots[age=7]"), b("potatoes[age=7]"), b("beetroots[age=3]")],
             flowers: vec![b("poppy"), b("dandelion"), b("azure_bluet"), b("oxeye_daisy"), b("cornflower")],
         })
@@ -109,7 +109,8 @@ pub fn surface_id(name: &str) -> BlockId {
     match name {
         "" | "grass_block" => i.grass,
         "podzol" => i.podzol,
-        "farmland[moisture=7]" | "farmland" => i.farmland,
+        // dry: farmland away from water would dry out on random ticks
+        "farmland[moisture=7]" | "farmland[moisture=0]" | "farmland" => i.farmland,
         "dirt" => i.dirt,
         other => b(other),
     }
@@ -663,14 +664,20 @@ pub fn patterns(rg: &Gen, cols: &mut [Col], ov: &mut Overlay) {
             "greenhouse" => {
                 // long glass houses (7 wide + 1 gap), 3 high, glass roof
                 let lane = row.rem_euclid(8);
-                cm.top = if lane == 7 { ids.gravel } else { ids.farmland };
+                let wall = lane != 7 && (boundary || lane == 0 || lane == 6);
+                // farmland only under the crops (under glass it would turn to dirt)
+                cm.top = if lane == 7 { ids.gravel } else if wall { ids.coarse_dirt } else { ids.farmland };
                 cm.flags |= CF_PATTERN | CF_NO_TREE | CF_NO_PLANT;
                 if lane != 7 {
-                    let wall = boundary || lane == 0 || lane == 6;
                     for dy in 1..=3 {
                         if wall {
                             ov.put_air(i, c.g + dy, ids.glass, &cm);
                         }
+                    }
+                    if !wall {
+                        // crops keep the farmland from turning to dirt
+                        let crop = ids.crops[(hash3(x.div_euclid(24), z.div_euclid(24), 6) % 4) as usize];
+                        ov.put_air(i, c.g + 1, crop, &cm);
                     }
                     ov.put_air(i, c.g + 4, b("white_stained_glass"), &cm);
                 }
@@ -1132,7 +1139,7 @@ fn materials(r: &BldRec) -> Mats {
             floor: b("spruce_planks"),
             frame: b("dark_oak_log[axis=y]"),
         },
-        features::U_GREENHOUSE => Mats { wall: glass, window: glass, roof: b("white_stained_glass"), floor: b("farmland[moisture=7]"), frame: glass },
+        features::U_GREENHOUSE => Mats { wall: glass, window: glass, roof: b("white_stained_glass"), floor: b("coarse_dirt"), frame: glass },
         features::U_SHED => Mats {
             wall: pick(&["spruce_planks", "light_gray_concrete", "iron_block", "oak_planks"], s),
             window: pick(&["spruce_planks", "light_gray_concrete"], s),

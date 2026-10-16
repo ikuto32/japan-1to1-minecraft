@@ -83,7 +83,8 @@ def zip_tile(args):
     files = []
     for rx, rz in tile_regions(x, z):
         p = os.path.join(region_dir, f"r.{rx}.{rz}.mca")
-        if os.path.exists(p):
+        # (an empty file is one the game created without saving anything)
+        if os.path.exists(p) and os.path.getsize(p) > 0:
             files.append((p, f"region/r.{rx}.{rz}.mca"))
     if not files:
         return None

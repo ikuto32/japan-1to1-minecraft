@@ -40,14 +40,30 @@ pub fn strip_light(src: &Path, dst: &Path, heightmaps: bool) -> Result<usize> {
 }
 
 fn block_names(sec: &Tag) -> Vec<String> {
+    block_states(sec, false)
+}
+
+/// Block of every voxel of a section: its name, with `props` also its
+/// properties (`name[k=v,...]`).
+fn block_states(sec: &Tag, props: bool) -> Vec<String> {
     let mut names = vec![String::new(); 4096];
     let Some(bs) = sec.get("block_states") else { return names };
     let pal: Vec<String> = match bs.get("palette") {
         Some(Tag::List(p)) => p
             .iter()
-            .map(|e| match e.get("Name") {
-                Some(Tag::String(s)) => s.clone(),
-                _ => String::new(),
+            .map(|e| {
+                let mut s = match e.get("Name") {
+                    Some(Tag::String(s)) => s.clone(),
+                    _ => String::new(),
+                };
+                if props {
+                    if let Some(Tag::Compound(kv)) = e.get("Properties") {
+                        let mut v: Vec<String> = kv.iter().map(|(k, t)| format!("{k}={}", if let Tag::String(x) = t { x.as_str() } else { "?" })).collect();
+                        v.sort();
+                        s = format!("{s}[{}]", v.join(","));
+                    }
+                }
+                s
             })
             .collect(),
         _ => vec![],
@@ -223,7 +239,7 @@ pub fn compare_blocks(a: &Path, b: &Path) -> Result<()> {
                         Some(Tag::Byte(b)) => *b as i32,
                         _ => 0,
                     };
-                    (y, block_names(x))
+                    (y, block_states(x, true))
                 })
                 .collect();
             v.sort_by_key(|x| x.0);

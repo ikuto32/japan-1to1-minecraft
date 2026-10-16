@@ -1,5 +1,6 @@
 """Start the official Minecraft server in a directory, wait for "Done",
-run console commands one by one, then stop. Prints the log.
+run console commands one by one (`wait <seconds>` lets it run), then stop.
+Prints the log.
 
 usage: python mcserver_check.py <server_dir> <commands_file> [timeout_s]
 """
@@ -74,6 +75,12 @@ if not wait_for("Done (", timeout):
 drain(2)
 for c in cmds:
     print(">>> " + c, flush=True)
+    if c.startswith("wait "):
+        # let the server run (random ticks, lighting) for that many seconds
+        end = time.time() + float(c.split()[1])
+        while time.time() < end:
+            drain(min(5, max(0.1, end - time.time())))
+        continue
     p.stdin.write(c + "\n")
     p.stdin.flush()
     if c.startswith("save-all"):

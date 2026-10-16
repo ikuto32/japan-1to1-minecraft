@@ -515,6 +515,28 @@ pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32)
     tadd(&T_DECOR, t);
     let t = std::time::Instant::now();
     let mut pre = Pre::new();
+    // grass that the game would turn to dirt on its random ticks (shut off
+    // from light by the block on it, or under water) is written as dirt
+    {
+        let ids = rgen::Ids::get();
+        for i in 0..RW * RW {
+            let c = &cols[i];
+            if c.out || c.top != ids.grass {
+                continue;
+            }
+            let y = c.g + 1;
+            let vox = &ov.v[i];
+            let above = match vox.binary_search_by_key(&y, |e| e.0) {
+                Ok(k) => vox[k].1,
+                Err(_) => c.block(y, ids),
+            };
+            let d = &pre.defs[above as usize];
+            let thin_snow = d.name == "minecraft:snow" && d.props.iter().any(|(k, v)| k == "layers" && v == "1");
+            if !thin_snow && (d.light.opacity >= 15 || d.light.down || d.fluid) {
+                cols[i].top = ids.dirt;
+            }
+        }
+    }
     let props: Vec<crate::blocks::LightProp> = pre.defs.iter().map(|d| d.light).collect();
     let sky = crate::light::compute(RW, &cols, &ov, &props, rgen::Ids::get());
     tadd(&T_LIGHT, t);
