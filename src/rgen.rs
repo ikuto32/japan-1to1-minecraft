@@ -307,7 +307,8 @@ pub struct Gen<'a> {
     pub st: &'a SpecTable,
 }
 
-fn distance(src: &[bool], w: usize, h: usize, cap: f32) -> Vec<f32> {
+/// Chamfer distance (pixels, diagonal √2) to the nearest `src` pixel, capped.
+pub fn distance(src: &[bool], w: usize, h: usize, cap: f32) -> Vec<f32> {
     let mut d: Vec<f32> = src.iter().map(|&s| if s { 0.0 } else { cap }).collect();
     const D: f32 = 1.4142;
     for y in 0..h {
@@ -369,8 +370,9 @@ impl<'a> Gen<'a> {
         let is_land = |c: u8| c == K_LAND1 || c == K_LAND5 || c == K_HOLE;
         let sea: Vec<bool> = k.iter().map(|&c| c == K_SEA).collect();
         let dsea = distance(&sea, n, n, 64.0);
-        let not_inland: Vec<bool> = k.iter().map(|&c| c != K_INLAND).collect();
-        let dshore = distance(&not_inland, n, n, 32.0);
+        // distance from the banks (land, not the sea at a river mouth) for the shelving river bed
+        let bank: Vec<bool> = k.iter().map(|&c| c != K_INLAND && c != K_SEA).collect();
+        let dshore = distance(&bank, n, n, 32.0);
         let inl: Vec<bool> = k.iter().map(|&c| c == K_INLAND).collect();
         let dinl = distance(&inl, n, n, 8.0);
         let mut g = vec![MIN_Y - 1; n * n];
@@ -379,7 +381,11 @@ impl<'a> Gen<'a> {
             match k[i] {
                 K_OUT => {}
                 K_SEA => {
-                    g[i] = SEA_Y - 250;
+                    // sea floor from the depth layer (ETOPO 2022); what lies deeper
+                    // than the world can hold is cut off
+                    let d = self.fx.lake[i];
+                    let depth = if d.is_finite() { d.round().clamp(1.0, (SEA_Y - MIN_Y - 4) as f32) as i32 } else { 250 };
+                    g[i] = SEA_Y - depth;
                     wtop[i] = SEA_Y;
                 }
                 K_INLAND => {
@@ -1099,50 +1105,90 @@ fn materials(r: &BldRec) -> Mats {
     }
 }
 
-/// Voxelize all buildings in the window.
-pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay) {
+/// Voxelize all buildings in the window. `decks` are the bridge decks over
+/// each column (see infra::apply): a building mostly under a viaduct stays
+/// below it; one mostly over the railway is a station roof.
+pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay, decks: &crate::infra::Decks) {
+    let deck_bottom = &decks.bottom;
     let n = rg.n;
     let fx = rg.fx;
+    // footprint pixels per building (water never), and how much of it lies on
+    // the railway (on the ground or on a viaduct) and under any deck
     let mut pix: HashMap<u32, Vec<usize>> = HashMap::new();
+    let mut on_rail: HashMap<u32, u32> = HashMap::new();
+    let mut under_deck: HashMap<u32, u32> = HashMap::new();
     for i in 0..n * n {
         let k = fx.bldg[i];
-        if k != 0 && !cols[i].out && cols[i].flags & (CF_WATER | CF_RAIL) == 0 {
-            pix.entry(k).or_default().push(i);
+        if k == 0 || cols[i].out || cols[i].flags & CF_WATER != 0 {
+            continue;
+        }
+        pix.entry(k).or_default().push(i);
+        if fx.rail[i] != 0 || decks.rail[i] || cols[i].flags & CF_RAIL != 0 {
+            *on_rail.entry(k).or_default() += 1;
+        }
+        if deck_bottom[i] != i32::MAX {
+            *under_deck.entry(k).or_default() += 1;
         }
     }
     let ids = Ids::get();
-    for (key, ps) in pix {
+    let nn = n as i64;
+    let mut keys: Vec<u32> = pix.keys().copied().collect();
+    keys.sort();
+    for key in keys {
+        let all = &pix[&key];
         let r = fx.bld[key as usize];
-        let m = materials(&r);
+        // a footprint mostly over the railway is a station roof: 基盤地図情報
+        // sheds there are the platform canopies infra.rs already draws, other
+        // buildings become a roof on pillars over the tracks
+        let station = on_rail.get(&key).copied().unwrap_or(0) * 10 >= all.len() as u32 * 3;
+        // under a viaduct (shops under the tracks, under an expressway); a deck
+        // that only touches the building (a footbridge into its 2nd floor) does not cut it
+        let clip = !station && under_deck.get(&key).copied().unwrap_or(0) * 10 >= all.len() as u32 * 3;
+        if station && r.src == 3 {
+            continue;
+        }
+        // railways and roads on structures keep their columns (a station roof spans them)
+        let ps: Vec<usize> = all.iter().copied().filter(|&i| station || cols[i].flags & (CF_RAIL | CF_ROAD) == 0).collect();
+        if ps.is_empty() {
+            continue;
+        }
+        let mut m = materials(&r);
+        if station {
+            // light platform roofing on slim steel-grey pillars
+            m.roof = b("smooth_stone");
+            m.frame = b("light_gray_concrete");
+        }
         let base = SEA_Y + r.base.round() as i32;
         let height = r.height.max(2.5);
         let storeys = (r.storeys as i32).max(1);
         let top = base + height.round().max(2.0) as i32; // eave / flat roof level
         let sh = ((height / storeys as f32).floor() as i32).clamp(2, 6); // storey height
         let inb = |j: i64| -> bool { j >= 0 && (j as usize) < n * n && fx.bldg[j as usize] == key };
-        // distance to the footprint edge across the ridge, for gable roofs
+        let open = r.roof == features::R_OPEN || station;
+        // roof height of every pixel: LOD2 surfaces (gaps filled from the
+        // nearest roof pixel of the same building), gable or flat
+        let local: HashMap<usize, usize> = ps.iter().enumerate().map(|(k, &i)| (i, k)).collect();
+        let mut lod2: Vec<f32> = ps.iter().map(|&i| if r.roof == features::R_LOD2 { fx.roof[i] } else { f32::NAN }).collect();
+        if r.roof == features::R_LOD2 && lod2.iter().any(|v| v.is_finite()) && lod2.iter().any(|v| !v.is_finite()) {
+            let mut q: std::collections::VecDeque<usize> = (0..ps.len()).filter(|&k| lod2[k].is_finite()).collect();
+            while let Some(k) = q.pop_front() {
+                let i = ps[k] as i64;
+                for d in [-1i64, 1, -nn, nn] {
+                    if let Some(&kk) = local.get(&((i + d) as usize)) {
+                        if !lod2[kk].is_finite() {
+                            lod2[kk] = lod2[k];
+                            q.push_back(kk);
+                        }
+                    }
+                }
+            }
+        }
         let ridge_x = r.ridge_x & 1 == 1;
-        let mut entrance: Option<usize> = None;
-        for &i in &ps {
+        let mut roof: Vec<i32> = Vec::with_capacity(ps.len());
+        for (k, &i) in ps.iter().enumerate() {
             let (x, z) = ((i % n) as i64, (i / n) as i64);
-            let ii = i as i64;
-            let nn = n as i64;
-            let edge = [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)].iter().any(|&(dx, dz)| {
-                let (xx, zz) = (x + dx, z + dz);
-                xx < 0 || zz < 0 || xx >= nn || zz >= nn || !inb(zz * nn + xx)
-            });
-            // ground: floor slab at `base`, terrain above it removed
-            let c = &mut cols[i];
-            c.g = base;
-            c.w = base;
-            c.top = m.floor;
-            c.sub = ids.stone;
-            c.sub_n = 2;
-            c.flags |= CF_BLDG | CF_NO_TREE | CF_NO_PLANT;
-            let c = *c;
-            // roof height for this pixel
-            let roof_y = match r.roof {
-                features::R_LOD2 if fx.roof[i].is_finite() => base + fx.roof[i].round().max(2.0) as i32,
+            let mut ry = match r.roof {
+                features::R_LOD2 if lod2[k].is_finite() => base + lod2[k].round().max(2.0) as i32,
                 features::R_GABLE => {
                     // distance (in pixels) to the edge perpendicular to the ridge
                     let mut d = 0i64;
@@ -1159,39 +1205,81 @@ pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay) {
                 }
                 _ => top + 1,
             };
-            let open = r.roof == features::R_OPEN;
-            if edge {
-                for y in base + 1..roof_y {
+            // under a viaduct: the roof just below the deck (a station roof stays above it)
+            let db = deck_bottom[i];
+            if db != i32::MAX && db > base && clip && ry >= db {
+                ry = db - 1;
+            }
+            roof.push(ry);
+        }
+        let mut entrance: Option<usize> = None;
+        for (k, &i) in ps.iter().enumerate() {
+            let (x, z) = ((i % n) as i64, (i / n) as i64);
+            let roof_y = roof[k];
+            // what the roof stands on: the ground, or a deck / platform below it
+            let floor = if station { ov.v[i].iter().map(|e| e.0).filter(|&y| y < roof_y).max().unwrap_or(i32::MIN).max(cols[i].top_y()) } else { base };
+            if roof_y <= floor + 1 || (station && roof_y < floor + 4) {
+                continue; // no room (under a deck, or a station roof below its platform)
+            }
+            if !station {
+                // ground: floor slab at `base`, terrain above it removed
+                let c = &mut cols[i];
+                c.g = base;
+                c.w = base;
+                c.top = m.floor;
+                c.sub = ids.stone;
+                c.sub_n = 2;
+                c.flags |= CF_BLDG | CF_NO_TREE | CF_NO_PLANT;
+            } else {
+                cols[i].flags |= CF_NO_TREE;
+            }
+            // the wall is exposed above the lowest neighbouring roof (the
+            // ground outside the footprint), so set-backs, towers on a podium
+            // and courtyards get facades instead of open floors
+            let mut outer = false;
+            let mut lo = roof_y;
+            for (dx, dz) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
+                let (xx, zz) = (x + dx, z + dz);
+                if xx < 0 || zz < 0 || xx >= nn || zz >= nn {
+                    continue;
+                }
+                match local.get(&((zz * nn + xx) as usize)) {
+                    Some(&kk) => lo = lo.min(roof[kk]),
+                    None => {
+                        // outside the footprint, or a part of it that is not drawn (tracks, water)
+                        outer |= !inb(zz * nn + xx);
+                        lo = floor;
+                    }
+                }
+            }
+            for y in floor + 1..roof_y {
+                if y > lo {
                     let level = (y - base - 1).rem_euclid(sh);
                     let window_row = level == 1 || (sh >= 4 && level == 2);
                     let pillar = (x + z) % 4 == 0;
                     let blk = if open {
-                        if pillar { m.frame } else { continue }
+                        // pillars, never on the tracks
+                        if pillar && !(station && matches!(fx.rail[i], 1..=3)) { m.frame } else { continue }
                     } else if y > top {
-                        m.wall // gable end
+                        m.wall // gable end, rooftop structures
                     } else if window_row && (x + z) % 3 != 0 && r.usage != features::U_GREENHOUSE {
                         m.window
                     } else {
                         m.wall
                     };
                     ov.put(i, y, blk);
-                }
-                if entrance.is_none() && !open {
-                    entrance = Some(i);
-                }
-            } else {
-                // floors between storeys
-                let mut y = base + sh;
-                while y < top && y < roof_y - 1 {
+                } else if !open && (y - base) % sh == 0 && y < top && y < roof_y - 1 {
+                    // floors between storeys
                     ov.put(i, y, m.floor);
-                    y += sh;
                 }
+            }
+            if outer && entrance.is_none() && !open {
+                entrance = Some(i);
             }
             ov.put(i, roof_y, m.roof);
-            if r.roof == features::R_FLAT && edge && height >= 6.0 && !open {
+            if r.roof == features::R_FLAT && outer && height >= 6.0 && !open && deck_bottom[i] > roof_y + 1 {
                 ov.put(i, roof_y + 1, m.frame); // parapet
             }
-            let _ = (ii, c);
         }
         // a ground-floor opening so the building can be entered
         if let Some(i) = entrance {

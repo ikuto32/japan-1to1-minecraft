@@ -22,6 +22,8 @@ SPOTS = {
     "07_shizuoka_airport": (-28300, 133000, 1600, 1100),
     "08_aokigahara": (10851, 58581, 1000, 700),
     "09_kofu_station": (6224, 36810, 1000, 700),
+    "10_tokyo_yurakucho_shimbashi": (113550, 35850, 1000, 1000),
+    "11_tokyo_hamazakibashi_jct": (113700, 37700, 1200, 800),
 }
 
 

@@ -119,6 +119,25 @@ impl TileSet {
         Ok(b.clone())
     }
 
+    /// Classes of an arbitrary window (missing data = outside).
+    pub fn classes(&self, x0: i64, z0: i64, w: usize, h: usize) -> Result<Vec<u8>> {
+        let mut kv = vec![K_OUT; w * h];
+        for bz in z0.div_euclid(512)..=(z0 + h as i64 - 1).div_euclid(512) {
+            for bx in x0.div_euclid(512)..=(x0 + w as i64 - 1).div_euclid(512) {
+                let Some(b) = self.block_cached(bx, bz)? else { continue };
+                let (zs, ze) = ((bz * 512).max(z0), ((bz + 1) * 512).min(z0 + h as i64));
+                let (xs, xe) = ((bx * 512).max(x0), ((bx + 1) * 512).min(x0 + w as i64));
+                for z in zs..ze {
+                    let src = ((z - bz * 512) * 512 + (xs - bx * 512)) as usize;
+                    let dst = ((z - z0) as usize) * w + (xs - x0) as usize;
+                    let len = (xe - xs) as usize;
+                    kv[dst..dst + len].copy_from_slice(&b.1[src..src + len]);
+                }
+            }
+        }
+        Ok(kv)
+    }
+
     /// Heights/classes of an arbitrary window (missing data = outside).
     pub fn window(&self, x0: i64, z0: i64, w: usize, h: usize) -> Result<(Vec<f32>, Vec<u8>)> {
         let mut hv = vec![0f32; w * h];

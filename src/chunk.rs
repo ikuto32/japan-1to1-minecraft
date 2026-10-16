@@ -588,8 +588,8 @@ pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32)
     let g = Gen { n: RW, ox: inp.ox, oz: inp.oz, h: &inp.h, k: &inp.k, fx: &ex.fw, st: ex.st };
     let mut cols = g.columns();
     let mut ov = Overlay::new(RW * RW);
-    crate::infra::apply(&g, &mut cols, &mut ov, &ex.structs);
-    rgen::buildings(&g, &mut cols, &mut ov);
+    let decks = crate::infra::apply(&g, &mut cols, &mut ov, &ex.structs);
+    rgen::buildings(&g, &mut cols, &mut ov, &decks);
     rgen::patterns(&g, &mut cols, &mut ov);
     rgen::trees(&g, &cols, &mut ov);
     rgen::plants(&g, &cols, &mut ov);

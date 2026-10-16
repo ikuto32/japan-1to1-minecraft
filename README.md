@@ -19,12 +19,13 @@ Authority of Japan (GSI) and open data for roads, railways, buildings and vegeta
 | Terrain | GSI 1 m / 5 m digital elevation models (JGD2024). The summit of Mt. Fuji is at 3,775 m (Y 2015); the world height is extended to Y -2032…2031 |
 | Roads | Real position and width. Expressways, national, prefectural, local and narrow roads and sidewalks have distinct surfaces, with lane markings, crossings and planted medians. Slopes use half-block steps, so you can walk them without jumping |
 | Trails | Mountain and hiking trails (all four Mt. Fuji routes — Yoshida, Subashiri, Gotemba, Fujinomiya — and the crater rim), forest and farm roads |
-| Bridges & tunnels | Bridges span valleys and rivers (with piers and parapets); tunnels run inside the mountains without cutting them |
+| Bridges & tunnels | Bridges span valleys and rivers (with piers and parapets); city viaducts, elevated stations and urban expressways stand at their level, subways run underground and mountain tunnels inside the mountains without cutting them. The whole road and rail network is solved at once, so junctions, stations and interchanges meet smoothly |
 | Railways | Shinkansen (slab track), JR and private lines with rails; station platforms with tactile strips and roofs |
 | Buildings | About 16 million. PLATEAU 3D city models (150 municipalities, LOD2 roof shapes) and GSI building outlines. Walls, windows and roofs differ by use; every storey has a floor and you can walk in |
 | Land use | Rice paddies, fields, tea plantations (rows), orchards, greenhouses, solar farms, airports (runway markings), ports, dams, parks, cemeteries, parking lots… |
 | Vegetation | Species, density, height, undergrowth and biome for about 350 plant communities of the national vegetation map; no tall trees above the tree line. In Shizuoka, 89 million planted cedars and cypresses at their measured (airborne LiDAR) positions and heights, and point-cloud canopies around Shizuoka Station and Makinohara |
-| Lakes | The Fuji Five Lakes have their surveyed depths (Lake Motosu: 121 m) |
+| Sea floor | The GSI 1 m DEM's own sea bed where it has one (airborne laser bathymetry along some coasts), elsewhere ETOPO 2022 (15″ grid) eased in from the coastline; what lies deeper than the bottom of the world (about 270 m) is cut flat |
+| Lakes | The Fuji Five Lakes and Lake Ashi have their surveyed depths (Lake Motosu: 121 m); other lakes and rivers shelve from the banks |
 | In-game tools | A data pack is included: `/function jp:menu` for landmarks, an elevation and latitude/longitude display and more ([below](#in-game-menu-data-pack)) |
 
 <table>
@@ -115,7 +116,9 @@ If you try to go to a tile you have not downloaded, the data pack commands cance
 
 - Building interiors are simple: floors and an entrance, no walls or stairs inside. Heights of buildings outside PLATEAU cities are estimated.
 - Roads and railways missing from OpenStreetMap are not there. Where the GSI road edges are missing, roads have the standard width of their class.
-- Suspension and truss bridge superstructures and complex interchanges are simplified; undersea tunnels are not drawn.
+- Suspension and truss bridge superstructures and complex interchanges are simplified; undersea tunnels are not drawn. The heights of
+  viaducts and depths of subways follow the OSM `layer` (e.g. layer -3 ≈ 24 m deep), not surveyed values.
+- The sea floor has the resolution of ETOPO 2022 (about 460 m); depths beyond about 270 m are flattened.
 - The vegetation and land-cover maps can be older than today's land use.
 - Tree heights come from point clouds only in Shizuoka (elsewhere: typical heights per plant community).
 
@@ -132,6 +135,7 @@ The world was made by processing the data below. If you redistribute or publish 
 | 1:25,000 vegetation map (2024) | Ministry of the Environment, Biodiversity Center (環境省) | Use and redistribution with attribution |
 | High-resolution land use and land cover map (2024, v25.04) | JAXA | Use with attribution; **commercial use requires prior notice to JAXA** |
 | Forest resource analysis data, VIRTUAL SHIZUOKA point clouds | Shizuoka Prefecture (静岡県) | Public Data License 1.0 / CC BY 4.0 |
+| ETOPO 2022 15 Arc-Second Global Relief Model (sea floor) | NOAA National Centers for Environmental Information | Public domain (U.S. government work); cite doi:10.25921/fd45-gt74 |
 
 - **OpenStreetMap (ODbL)**: the world is a "Produced Work" under the ODbL. Credit "© OpenStreetMap contributors" and state
   that the data is available under the ODbL (https://www.openstreetmap.org/copyright). OSM is not used for buildings.

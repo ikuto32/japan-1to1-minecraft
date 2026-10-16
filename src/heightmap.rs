@@ -234,11 +234,20 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> TileOut {
                     K_SEA
                 } else if m & M_INLAND != 0 || !code_sea {
                     K_INLAND
+                } else if matches!(wl.sample(lat, lon), Sample::Elev(_)) {
+                    // coded as sea but not joined to the sea (lakes.rs): a river or lake
+                    K_INLAND
                 } else {
                     K_SEA
                 }
             };
             let k = match s {
+                // the DEM's sea floor (laser bathymetry along some coasts) inside
+                // a sea polygon is sea, with its depth kept for the sea bed
+                Sample::Elev(v) if v < 0.0 && m & M_SEA != 0 => {
+                    hrow[i] = v.max(SEA_FLOOR);
+                    K_SEA
+                }
                 Sample::Elev(v) => {
                     hrow[i] = v.max(SEA_FLOOR);
                     src
@@ -259,7 +268,8 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> TileOut {
             };
             krow[i] = k;
             match k {
-                K_SEA => hrow[i] = SEA_FLOOR,
+                // sea floor unknown here (the DEM's own sea bed is kept)
+                K_SEA if !matches!(s, Sample::Elev(_)) => hrow[i] = SEA_FLOOR,
                 K_INLAND => {
                     if let Sample::Elev(v) = wl.sample(lat, lon) {
                         hrow[i] = v.max(SEA_FLOOR);
@@ -291,12 +301,18 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> TileOut {
         });
     }
     // anything still unknown inside the area: interpolate from the window
+    // (the sea counts as sea level, not as its -250 m floor, so a coastal
+    // pixel without data does not become a pit)
     let need: bool = cls.par_iter().zip(hgt.par_iter()).any(|(k, h)| *k != K_OUT && h.is_nan());
     if need {
         let mut g: Vec<f32> = cls
             .par_iter()
             .zip(hgt.par_iter())
-            .map(|(k, h)| if *k != K_OUT && *k != K_INLAND { *h } else { f32::NAN })
+            .map(|(k, h)| match *k {
+                K_OUT | K_INLAND => f32::NAN,
+                K_SEA => 0.0,
+                _ => *h,
+            })
             .collect();
         raster::pull_push(&mut g, n, n);
         hgt.par_iter_mut().zip(cls.par_iter()).zip(g.par_iter()).for_each(|((h, k), v)| {

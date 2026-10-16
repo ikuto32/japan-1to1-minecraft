@@ -4,8 +4,9 @@
 //! city zips (only `udx/bldg/*.gml` entries) for cities without those files.
 //!
 //! Output store `vec_plateau_bldg.bin`: one VFeat per Building/BuildingPart:
-//!   parts[0] = footprint ring (MC X,Z); parts[1..] = LOD2 roof polygons with
-//!   per-vertex heights in `zs` (zs[0] = footprint heights = ground z)
+//!   parts[..class] = footprint rings (MC X,Z; outer and inner rings of every
+//!   polygon, filled even-odd so courtyards stay open); parts[class..] = LOD2
+//!   roof polygons; per-vertex heights in `zs` (footprints: ground z)
 //!   nums = [measuredHeight m, storeysAboveGround, usage code, ground z (T.P. m)]
 //!   flags: 1 = has LOD2 roof
 
@@ -65,6 +66,18 @@ fn poslists(h: &[u8], from: usize, to: usize) -> Vec<Vec<(f64, f64, f64)>> {
     out
 }
 
+/// Distinct rings (a ring published twice would cancel out in an even-odd fill).
+fn rings_of(v: Vec<Vec<(f64, f64, f64)>>) -> Vec<Vec<(f64, f64, f64)>> {
+    let mut out: Vec<Vec<(f64, f64, f64)>> = Vec::new();
+    for r in v {
+        let same = |o: &Vec<(f64, f64, f64)>| o.len() == r.len() && o.iter().zip(&r).all(|(a, b)| (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9);
+        if !out.iter().any(same) {
+            out.push(r);
+        }
+    }
+    out
+}
+
 /// Byte ranges of every `<tag ...>...</tag>` inside h[from..to].
 fn elements(h: &[u8], tag: &str, from: usize, to: usize) -> Vec<(usize, usize)> {
     let open = format!("<{tag}");
@@ -86,7 +99,8 @@ fn elements(h: &[u8], tag: &str, from: usize, to: usize) -> Vec<(usize, usize)> 
 }
 
 struct Bld {
-    footprint: Vec<(f64, f64, f64)>,
+    /// footprint rings (outer and inner, of every polygon; filled even-odd)
+    footprint: Vec<Vec<(f64, f64, f64)>>,
     roofs: Vec<Vec<(f64, f64, f64)>>,
     height: f64,
     storeys: f64,
@@ -105,11 +119,12 @@ fn parse_building(h: &[u8], s: usize, e: usize, inherit_usage: f64) -> Option<Bl
         roofs.extend(poslists(h, rs, re));
     }
     // footprint: lod0FootPrint / lod0RoofEdge / GroundSurface / lowest lod1 face
-    let mut footprint: Option<Vec<(f64, f64, f64)>> = None;
+    let mut footprint: Option<Vec<Vec<(f64, f64, f64)>>> = None;
     for tag in ["bldg:lod0FootPrint", "bldg:lod0RoofEdge"] {
         if let Some(&(fs, fe)) = elements(h, tag, s, e).first() {
-            footprint = poslists(h, fs, fe).into_iter().max_by_key(|p| p.len());
-            if footprint.is_some() {
+            let rings = rings_of(poslists(h, fs, fe));
+            if !rings.is_empty() {
+                footprint = Some(rings);
                 break;
             }
         }
@@ -127,19 +142,19 @@ fn parse_building(h: &[u8], s: usize, e: usize, inherit_usage: f64) -> Option<Bl
             }
             if footprint.is_none() {
                 // the face whose vertices all lie at the minimum height
-                footprint = faces.into_iter().find(|f| f.iter().all(|p| (p.2 - ground).abs() < 0.01));
+                footprint = faces.into_iter().find(|f| f.iter().all(|p| (p.2 - ground).abs() < 0.01)).map(|f| vec![f]);
             }
             break;
         }
     }
     if let Some(&(gs, ge)) = elements(h, "bldg:GroundSurface", s, e).first() {
-        let g = poslists(h, gs, ge);
-        if let Some(f) = g.into_iter().max_by_key(|p| p.len()) {
+        let g = rings_of(poslists(h, gs, ge));
+        if !g.is_empty() {
             if ground.is_nan() {
-                ground = f.iter().map(|p| p.2).fold(f64::INFINITY, f64::min);
+                ground = g.iter().flatten().map(|p| p.2).fold(f64::INFINITY, f64::min);
             }
             if footprint.is_none() {
-                footprint = Some(f);
+                footprint = Some(g);
             }
         }
     }
@@ -172,16 +187,15 @@ fn parse_file(h: &[u8], lcc: &Lcc) -> Vec<VFeat> {
                     })
                     .unzip()
             };
-            let (fp, fz) = proj(&b.footprint);
-            let mut parts = vec![fp];
-            let mut zs = vec![fz];
+            let (mut parts, mut zs): (Vec<Vec<[f64; 2]>>, Vec<Vec<f32>>) = b.footprint.iter().map(proj).unzip();
+            let nfoot = parts.len() as u16;
             for r in &b.roofs {
                 let (p, z) = proj(r);
                 parts.push(p);
                 zs.push(z);
             }
             out.push(VFeat {
-                class: 0,
+                class: nfoot,
                 flags: if b.roofs.is_empty() { 0 } else { F_LOD2 },
                 nums: [b.height as f32, b.storeys as f32, b.usage as f32, b.ground as f32],
                 id: bi as u64,

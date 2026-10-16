@@ -42,7 +42,7 @@ const KEEP_TAGS: &[&str] = &[
     "sac_scale", "footway", "service", "usage", "highspeed", "ref", "name", "roof:shape", "roof:colour", "building:colour",
     "building:material", "public_transport", "covered", "area", "bridge", "tunnel", "layer", "level", "location", "water", "wetland",
     "leaf_type", "leaf_cycle", "sport", "landcover", "tourism", "historic", "barrier", "embankment", "cutting", "width", "lanes",
-    "building:levels", "height", "min_height", "building:min_level", "roof:levels", "roof:height", "est_width", "railway:track_ref",
+    "building:levels", "height", "min_height", "building:min_level", "roof:levels", "roof:height", "est_width", "railway:track_ref", "indoor",
 ];
 
 fn tag_text(tags: &[(String, String)]) -> String {

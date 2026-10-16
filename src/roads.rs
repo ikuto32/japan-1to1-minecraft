@@ -17,7 +17,7 @@ use crate::infra::{
     RAIL_BALLAST, RAIL_PLATFORM, RAIL_SLAB, RAIL_TRACK, RD_GENERAL, RD_MARK_WHITE, RD_MARK_YELLOW, RD_MOTORWAY, RD_NARROW, RD_NATIONAL,
     RD_MEDIAN, RD_PEDESTRIAN, RD_PREF, RD_SIDEWALK, RD_STEPS, RD_TRACK, RD_TRAIL, road_code, road_width,
 };
-use crate::osm::{F_AREA, F_BRIDGE, F_HIGHSPEED, F_ONEWAY, F_SERVICE, F_TUNNEL};
+use crate::osm::{F_AREA, F_BRIDGE, F_EMBANKMENT, F_HIGHSPEED, F_ONEWAY, F_SERVICE, F_TUNNEL};
 use crate::vfeat::VFeat;
 use std::collections::VecDeque;
 
@@ -222,6 +222,33 @@ fn smooth(v: &[f32], s: &[f64], r: f64) -> Vec<f32> {
     out
 }
 
+/// Fill the gaps of a height profile along a way: where its cross-section was
+/// all water (a pier, a causeway, a crossing without a bridge tag) the way
+/// keeps the height of the land on both sides (interpolated); a way lying
+/// entirely over water sits just above the water surface.
+fn fill_along(h: &mut [f32], water: impl Fn(usize) -> f32) {
+    if !h.iter().any(|v| v.is_finite()) {
+        for (i, v) in h.iter_mut().enumerate() {
+            *v = water(i) + 1.0;
+        }
+    }
+    let known: Vec<usize> = (0..h.len()).filter(|&i| h[i].is_finite()).collect();
+    let (Some(&a), Some(&b)) = (known.first(), known.last()) else { return };
+    for i in 0..a {
+        h[i] = h[a];
+    }
+    for i in b + 1..h.len() {
+        h[i] = h[b];
+    }
+    for w in known.windows(2) {
+        let (p, q) = (w[0], w[1]);
+        for i in p + 1..q {
+            let t = (i - p) as f32 / (q - p) as f32;
+            h[i] = h[p] + (h[q] - h[p]) * t;
+        }
+    }
+}
+
 /// Median over ±k neighbours (NaN-aware).
 fn median_filter(v: &[f32], k: usize) -> Vec<f32> {
     (0..v.len())
@@ -347,7 +374,7 @@ pub struct Inputs<'a> {
 }
 
 pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
-    use crate::heightmap::K_OUT;
+    use crate::heightmap::{K_INLAND, K_OUT, K_SEA};
     let n = w.n;
     let to_px = |p: &[[f64; 2]]| -> Vec<[f64; 2]> { p.iter().map(|q| [q[0] - w.x0 as f64, q[1] - w.z0 as f64]).collect() };
     let inside = |q: [f64; 2], m: f64| q[0] >= -m && q[1] >= -m && q[0] < n as f64 + m && q[1] < n as f64 + m;
@@ -357,8 +384,26 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
             return f32::NAN;
         }
         let i = z as usize * n + x as usize;
-        if cls[i] == K_OUT { f32::NAN } else { hgt[i] }
+        // water columns hold the sea floor / water surface, not ground
+        if cls[i] == K_OUT || cls[i] == K_SEA || cls[i] == K_INLAND { f32::NAN } else { hgt[i] }
     };
+    // the water surface under a point (for ways lying entirely over water: piers)
+    let water_top = |q: [f64; 2]| -> f32 {
+        let (x, z) = (q[0].floor() as i64, q[1].floor() as i64);
+        if x < 0 || z < 0 || x >= n as i64 || z >= n as i64 {
+            return f32::NAN;
+        }
+        let i = z as usize * n + x as usize;
+        match cls[i] {
+            K_INLAND => hgt[i],
+            K_SEA => 0.0,
+            _ => f32::NAN,
+        }
+    };
+    // ways the network pass made structures (bridges, viaducts, tunnels, also
+    // by layer or between structure ways) are drawn from their profiles instead
+    let road_ids: std::collections::HashSet<u64> = inp.structs.iter().filter(|f| f.nums[3] < 0.5).map(|f| f.id).collect();
+    let rail_ids: std::collections::HashSet<u64> = inp.structs.iter().filter(|f| f.nums[3] >= 0.5).map(|f| f.id).collect();
     let mut stats = [0usize; 4];
 
     // ---- road edge / sidewalk line index
@@ -400,7 +445,7 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
     let mut roadh = vec![f32::NAN; n * n];
     let mut ways: Vec<(u8, &VFeat)> = Vec::new();
     for f in inp.roads {
-        if f.flags & (F_BRIDGE | F_TUNNEL) != 0 || f.class == 24 || f.parts.is_empty() {
+        if road_ids.contains(&f.id) || f.class == 24 || f.parts.is_empty() {
             continue;
         }
         if tag(&f.text, "footway") == Some("crossing") {
@@ -520,7 +565,8 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
                 h[i] = v[v.len() / 2];
             }
         }
-        let h = smooth(&h, &s, road_smooth_r(code));
+        let mut h = smooth(&h, &s, road_smooth_r(code));
+        fill_along(&mut h, |i| water_top(pts[i]));
         // markings
         let lanes = f.nums[1];
         let wi = wi as u32;
@@ -578,7 +624,7 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
     }
     // zebra crossings painted onto carriageways
     for f in inp.roads {
-        if tag(&f.text, "footway") != Some("crossing") || f.flags & (F_BRIDGE | F_TUNNEL) != 0 || f.parts.is_empty() || f.area {
+        if tag(&f.text, "footway") != Some("crossing") || road_ids.contains(&f.id) || f.parts.is_empty() || f.area {
             continue;
         }
         let (pts, s) = densify(&to_px(&f.parts[0]), 1.0);
@@ -599,7 +645,7 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
     // ---- rails
     let mut rail = vec![0u8; n * n];
     let mut railh = vec![f32::NAN; n * n];
-    let mut rails: Vec<&VFeat> = inp.rails.iter().filter(|f| f.flags & (F_BRIDGE | F_TUNNEL) == 0 && !f.area && !f.parts.is_empty() && f.class != 5).collect();
+    let mut rails: Vec<&VFeat> = inp.rails.iter().filter(|f| !rail_ids.contains(&f.id) && !f.area && !f.parts.is_empty() && f.class != 5).collect();
     // sidings first, main lines last (they win where they overlap)
     rails.sort_by_key(|f| (f.flags & F_SERVICE == 0, f.flags & F_HIGHSPEED != 0, f.id));
     for f in rails {
@@ -639,7 +685,8 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
             }
         }
         let r = if tram { 6.0 } else if f.flags & F_SERVICE != 0 { 15.0 } else { 40.0 };
-        let h = smooth(&h, &s, r);
+        let mut h = smooth(&h, &s, r);
+        fill_along(&mut h, |i| water_top(pts[i]));
         for k in 0..tracks {
             let off = (k as f64 - (tracks as f64 - 1.0) / 2.0) * spacing;
             let tp: Vec<[f64; 2]> = pts.iter().zip(&nm).map(|(q, (_, nr))| [q[0] + nr[0] * off, q[1] + nr[1] * off]).collect();
@@ -676,7 +723,7 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
         }
     }
     for f in inp.structs {
-        if f.nums[3] < 0.5 || f.flags & F_BRIDGE == 0 {
+        if f.nums[3] < 0.5 || f.flags & (F_BRIDGE | F_EMBANKMENT) == 0 {
             continue;
         }
         let (Some(p), Some(z)) = (f.parts.first(), f.zs.first()) else { continue };

@@ -283,7 +283,7 @@ fn dye(c: &str) -> Option<[u8; 3]> {
     })
 }
 
-fn block_color(name: &str) -> [u8; 3] {
+pub fn block_color(name: &str) -> [u8; 3] {
     let n = name.trim_start_matches("minecraft:");
     // slabs / stairs / walls look like their material from above
     let base = n.trim_end_matches("_slab").trim_end_matches("_stairs").trim_end_matches("_wall");
@@ -618,6 +618,13 @@ pub fn cmd(args: &[String]) -> Result<()> {
         Some("column") => {
             let v: Vec<i64> = args[2..6].iter().map(|s| s.parse().unwrap()).collect();
             column(Path::new(&args[1]), v[0], v[1], v[2] as i32, v[3] as i32)?
+        }
+        Some("view") => {
+            // view <region dir> X Y Z yaw pitch out.png [W H fov maxdist]
+            let f: Vec<f64> = args[2..7].iter().map(|s| s.parse().unwrap()).collect();
+            let opt = |i: usize, d: f64| args.get(i).and_then(|s| s.parse().ok()).unwrap_or(d);
+            let cam = crate::view::Cam { pos: [f[0], f[1], f[2]], yaw: f[3], pitch: f[4], w: opt(8, 1600.0) as usize, h: opt(9, 900.0) as usize, fov: opt(10, 70.0), maxd: opt(11, 400.0) };
+            crate::view::render(Path::new(&args[1]), &cam, Path::new(&args[7]))?
         }
         Some("blockcmp") => compare_blocks(Path::new(&args[1]), Path::new(&args[2]))?,
         Some("lightcmp") => compare_light(Path::new(&args[1]), Path::new(&args[2]), args.get(3).and_then(|s| s.parse().ok()).unwrap_or(10))?,

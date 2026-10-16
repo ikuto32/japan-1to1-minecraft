@@ -25,6 +25,7 @@ mod store;
 mod tiff;
 mod trees;
 mod verify;
+mod view;
 mod vfeat;
 mod world;
 
@@ -461,7 +462,8 @@ fn main() -> Result<()> {
                 if near {
                     let n: usize = f.parts.iter().map(|p| p.len()).sum();
                     let p0 = f.parts[0][0];
-                    println!("id={} class={} flags={} nums={:?} area={} pts={} zs={} at=({:.0},{:.0}) text={}", f.id, f.class, f.flags, f.nums, f.area, n, f.zs.len(), p0[0], p0[1], f.text);
+                    let zr = f.zs.first().filter(|z| !z.is_empty()).map(|z| format!(" z[{:.1}..{:.1}] ends {:.1},{:.1}", z.iter().cloned().fold(f32::MAX, f32::min), z.iter().cloned().fold(f32::MIN, f32::max), z[0], z[z.len() - 1])).unwrap_or_default();
+                    println!("id={} class={} flags={} nums={:?} area={} pts={} zs={}{zr} at=({:.0},{:.0}) text={}", f.id, f.class, f.flags, f.nums, f.area, n, f.zs.len(), p0[0], p0[1], f.text);
                 }
             }
         }

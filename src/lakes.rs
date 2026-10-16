@@ -23,6 +23,8 @@ pub const C_INLAND: u8 = 3;
 pub const C_NONE: u8 = 4;
 const F_WA_SEA: u8 = 0x10;
 const F_WA_INLAND: u8 = 0x20;
+/// sea known from a sea polygon or the open ocean (not only from a DEM code)
+const F_SEA_SURE: u8 = 0x40;
 const F_VISITED: u8 = 0x80;
 
 /// Sub-rectangle of the global 5m lattice covering the area.
@@ -143,28 +145,85 @@ pub fn classify5(area: &Area, m5: &LevelStore, wa: &WaterIndex) -> LakeOut {
             };
             // water: the WA polygons decide sea vs. inland; the DEM code only
             // where no polygon covers the cell
-            *cell = if is_elev(v) {
+            let open_ocean = !kihon.contains(&(gr / 1500, gc / 2250));
+            *cell = if is_elev(v) && v < 0.0 && flags & F_WA_SEA != 0 {
+                // the DEM's sea floor inside a sea polygon (laser bathymetry)
+                C_SEA | F_SEA_SURE
+            } else if is_elev(v) {
                 C_LAND
             } else if v == gml::SEA || v == gml::INLAND {
                 if flags & F_WA_SEA != 0 {
-                    C_SEA
+                    C_SEA | F_SEA_SURE
                 } else if flags & F_WA_INLAND != 0 || v == gml::INLAND {
                     C_INLAND
+                } else if open_ocean {
+                    C_SEA | F_SEA_SURE
                 } else {
                     C_SEA
                 }
             } else if flags & F_WA_SEA != 0 {
-                C_SEA
+                C_SEA | F_SEA_SURE
             } else if flags & F_WA_INLAND != 0 {
                 C_INLAND
-            } else if !kihon.contains(&(gr / 1500, gc / 2250)) {
-                C_SEA
+            } else if open_ocean {
+                C_SEA | F_SEA_SURE
             } else {
                 C_NONE
             };
         }
     });
+    sea_by_connection(&mut cls, &l);
     LakeOut { cls, lat: l }
+}
+
+/// A cell the DEM codes as sea surface without a sea polygon is only sea where
+/// it joins the real sea (a sea polygon, or the open ocean beyond the 基本情報
+/// meshes); elsewhere — rivers in the mountains coded 海水面 — it is inland
+/// water and gets a water level like any river.
+fn sea_by_connection(cls: &mut [u8], l: &Lat5) {
+    let (nc, nr) = (l.nc, l.nr);
+    let unsure = |v: u8| v & 0x0f == C_SEA && v & F_SEA_SURE == 0;
+    // seeds: sure sea cells next to an unsure one (the lattice is ~2e9 cells, the frontier tiny)
+    let mut queue: Vec<u32> = cls
+        .par_chunks(nc)
+        .enumerate()
+        .flat_map_iter(|(r, row)| {
+            let cls = &*cls;
+            (0..nc).filter_map(move |c| {
+                if row[c] & F_SEA_SURE == 0 {
+                    return None;
+                }
+                let i = r * nc + c;
+                let near = (r > 0 && unsure(cls[i - nc])) || (r + 1 < nr && unsure(cls[i + nc])) || (c > 0 && unsure(row[c - 1])) || (c + 1 < nc && unsure(row[c + 1]));
+                near.then_some(i as u32)
+            })
+        })
+        .collect();
+    let mut head = 0;
+    while head < queue.len() {
+        let i = queue[head] as usize;
+        head += 1;
+        let (r, c) = (i / nc, i % nc);
+        let nbs = [(r > 0).then(|| i - nc), (r + 1 < nr).then(|| i + nc), (c > 0).then(|| i - 1), (c + 1 < nc).then(|| i + 1)];
+        for j in nbs.into_iter().flatten() {
+            if unsure(cls[j]) {
+                cls[j] |= F_SEA_SURE;
+                queue.push(j as u32);
+            }
+        }
+    }
+    let moved: usize = cls
+        .par_iter_mut()
+        .map(|v| {
+            let m = unsure(*v);
+            if m {
+                *v = (*v & 0xf0) | C_INLAND;
+            }
+            *v &= !F_SEA_SURE;
+            m as usize
+        })
+        .sum();
+    eprintln!("lakes: {moved} cells coded as sea away from the sea taken as inland water");
 }
 
 struct Comp {

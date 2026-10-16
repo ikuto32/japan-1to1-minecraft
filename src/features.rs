@@ -8,7 +8,9 @@
 //!   rail_*.tif   U8   1 track (rail), 2 ballast, 3 slab track, 4 platform
 //!   railh_*.tif  F32  rail/platform base height (m)
 //!   tcov_*.tif   U8   measured-tree coverage: 1 planted forest with tree points, 2 LiDAR canopy
-//!   lake_*.tif   F32  surveyed lake depth (m below the surface), NaN elsewhere
+//!   lake_*.tif   F32  water depth (m below the surface): surveyed lake beds
+//!                     (湖沼データ) and the sea floor (the DEM's sea bed, else
+//!                     ETOPO 2022), NaN elsewhere
 //!   rowdir_*.tif U8   direction of field rows (degrees + 1; 0 = none)
 //!   canopy_*.tif U8   LiDAR canopy height of trees (0.2 m units, ≥ 4 m; 0 = none)
 //! plus bldg_*.bin, the building table, and trees_*.bin, measured trees
@@ -103,6 +105,7 @@ pub fn layer_name(layer: &str, x: i64, z: i64, ext: &str) -> String {
 pub struct Ctx {
     pub work: PathBuf,
     bathy: Vec<crate::bathy::Grid>,
+    sea: Option<crate::bathy::Sea>,
     pub lcc: Lcc,
     pub ts: TileSet,
     pub out: PathBuf,
@@ -140,6 +143,7 @@ impl Ctx {
         Ok(Ctx {
             work: work.to_path_buf(),
             bathy: crate::bathy::load(&data.join("湖沼データ"))?,
+            sea: crate::bathy::Sea::load(&data.join("ETOPO2022"), area.lat_min - 0.05, area.lat_max + 0.05, area.lon_min - 0.05, area.lon_max + 0.05)?,
             lcc: Lcc::new(),
             ts: TileSet::new(hm_dir),
             out: out.to_path_buf(),
@@ -480,7 +484,9 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
         ((x1 - x0) >= (z1 - z0)) as u8
     };
     for f in ctx.plateau.tile(tx, tz) {
-        let (free, total) = free_pixels(&f.parts[..1], &bldg);
+        // footprint rings first (outer and courtyards), then the LOD2 roof polygons
+        let nfoot = (f.class as usize).clamp(1, f.parts.len());
+        let (free, total) = free_pixels(&f.parts[..nfoot], &bldg);
         if total == 0 || free.len() * 10 < total * 5 {
             continue;
         }
@@ -504,7 +510,7 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
             if lod2 {
                 // z-buffer the roof polygons: height above the PLATEAU ground level
                 let gz = f.nums[3];
-                for (part, zs) in f.parts.iter().zip(&f.zs).skip(1) {
+                for (part, zs) in f.parts.iter().zip(&f.zs).skip(nfoot) {
                     let pts: Vec<(f64, f64, f32)> = part.iter().zip(zs).map(|(&p, &z)| {
                         let (x, y) = w.px(p);
                         (x, y, z - gz)
@@ -620,6 +626,33 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
             w.lines(&f.parts, |p| strct[p] = strct[p].max(c));
         }
     }
+    // OSM piers and breakwaters where 基盤地図情報 has none (quays of ports, jetties)
+    for f in &osm_struct {
+        let c = match tag(&f.text, "man_made") {
+            Some("pier") => 2,
+            Some("breakwater" | "groyne") => 1,
+            _ => continue,
+        };
+        if f.area {
+            w.fill(&f.parts, |p| {
+                if strct[p] == 0 {
+                    strct[p] = c;
+                }
+            });
+        } else {
+            for part in &f.parts {
+                let px: Vec<[f64; 2]> = part.iter().map(|q| [q[0] - w.x0 as f64, q[1] - w.z0 as f64]).collect();
+                let (pts, _) = crate::roads::densify(&px, 2.0);
+                for k2 in 0..pts.len().saturating_sub(1) {
+                    crate::roads::segment_pixels(n, pts[k2], pts[k2 + 1], 2.0, |p, _, _| {
+                        if strct[p] == 0 {
+                            strct[p] = c;
+                        }
+                    });
+                }
+            }
+        }
+    }
     // ---- roads, railways, platforms
     let (roads, rails, platforms) = (ctx.osm_road.tile(tx, tz), ctx.osm_rail.tile(tx, tz), ctx.osm_platform.tile(tx, tz));
     let (rdedg, rdcompt, structs) = (ctx.rdedg.tile(tx, tz), ctx.rdcompt.tile(tx, tz), ctx.net_struct.tile(tx, tz));
@@ -702,6 +735,49 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
             }
         }
     }
+    // ---- sea floor: where the DEM has the sea bed (laser bathymetry along some
+    // coasts) its depth; elsewhere ETOPO 2022 below mean sea level, eased in
+    // over the first COAST m from the shore (the 15″ grid does not resolve the
+    // coastline) and blended into the DEM sea bed over BLEND m around it
+    if cls.iter().any(|&c| c == K_SEA) {
+        const COAST: f32 = 300.0;
+        const BLEND: f32 = 150.0;
+        let hal = 320i64;
+        let w2 = (TILE + 2 * hal) as usize;
+        let (h2, k2) = ctx.ts.window(mx0 - hal, mz0 - hal, w2, w2)?;
+        let land: Vec<bool> = k2.iter().map(|&c| matches!(c, K_LAND1 | K_LAND5 | K_HOLE)).collect();
+        let dist = crate::rgen::distance(&land, w2, w2, COAST + 10.0);
+        drop(land);
+        let dem: Vec<f32> = k2.iter().zip(&h2).map(|(&c, &v)| if c == K_SEA && v > crate::heightmap::SEA_FLOOR + 0.5 { (-v).max(1.0) } else { f32::NAN }).collect();
+        drop(h2);
+        let has_dem = dem.iter().any(|v| v.is_finite());
+        let (ddist, dval) = if has_dem { nearest_value(&dem, w2, w2, BLEND + 10.0) } else { (Vec::new(), Vec::new()) };
+        let ll = LlGrid::new(&ctx.lcc, mx0, mz0, TILE, TILE);
+        let hal = hal as usize;
+        let smooth = |s: f32| s * s * (3.0 - 2.0 * s);
+        out.lake.par_chunks_mut(t).enumerate().for_each(|(z, row)| {
+            for x in 0..t {
+                let wi = (z + hal) * w2 + x + hal;
+                if k2[wi] != K_SEA {
+                    continue;
+                }
+                if has_dem && dem[wi].is_finite() {
+                    row[x] = dem[wi];
+                    continue;
+                }
+                let (la, lo) = ll.get(mx0 + x as i64, mz0 + z as i64);
+                let e = ctx.sea.as_ref().map(|s| s.at(la, lo)).unwrap_or(f32::NAN);
+                let mut d = if e.is_finite() { 1.0 + ((-e).max(1.0) - 1.0) * smooth((dist[wi] / COAST).min(1.0)) } else { f32::NAN };
+                if has_dem && ddist[wi] < BLEND {
+                    let far = if d.is_finite() { d } else { dval[wi] };
+                    d = dval[wi] + (far - dval[wi]) * smooth(ddist[wi] / BLEND);
+                }
+                if d.is_finite() {
+                    row[x] = d.max(1.0);
+                }
+            }
+        });
+    }
     // ---- row direction of fields, tea, orchards, greenhouses, solar farms:
     // a mapped parcel's long side; elsewhere the prevailing direction of the
     // roads around (farm plots are laid out on their road grid)
@@ -764,7 +840,7 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
     // ---- measured trees (Shizuoka)
     // LiDAR tree tops are not taken on buildings, roads, railways or bridge decks
     let mut busy: Vec<bool> = (0..t * t).map(|p| out.bldg[p] != 0 || out.road[p] != 0 || out.rail[p] != 0).collect();
-    for f in structs.iter().filter(|f| f.flags & crate::osm::F_BRIDGE != 0) {
+    for f in structs.iter().filter(|f| f.flags & (crate::osm::F_BRIDGE | crate::osm::F_EMBANKMENT) != 0) {
         let Some(pp) = f.parts.first() else { continue };
         let px: Vec<[f64; 2]> = pp.iter().map(|q| [q[0] - mx0 as f64, q[1] - mz0 as f64]).collect();
         for k in 0..px.len().saturating_sub(1) {
@@ -1120,4 +1196,36 @@ pub fn run(ctx: &Ctx, tiles: &[(i64, i64)], concurrency: usize) -> Result<()> {
         writeln!(f, "{},{},{}", i + 1, c.key, c.name)?;
     }
     Ok(())
+}
+
+/// Chamfer distance (pixels, diagonal √2) to the nearest finite value of
+/// `src` (capped), and that value.
+fn nearest_value(src: &[f32], w: usize, h: usize, cap: f32) -> (Vec<f32>, Vec<f32>) {
+    let mut d: Vec<f32> = src.iter().map(|v| if v.is_finite() { 0.0 } else { cap }).collect();
+    let mut val = src.to_vec();
+    const DG: f32 = std::f32::consts::SQRT_2;
+    for pass in 0..2 {
+        let (ys, xs): (Vec<usize>, Vec<usize>) = if pass == 0 { ((0..h).collect(), (0..w).collect()) } else { ((0..h).rev().collect(), (0..w).rev().collect()) };
+        let s: i64 = if pass == 0 { -1 } else { 1 };
+        for &y in &ys {
+            for &x in &xs {
+                let i = y * w + x;
+                let (mut best, mut bv) = (d[i], val[i]);
+                for (dx, dy, c) in [(s, 0i64, 1.0f32), (0, s, 1.0), (s, s, DG), (-s, s, DG)] {
+                    let (xx, yy) = (x as i64 + dx, y as i64 + dy);
+                    if xx < 0 || yy < 0 || xx >= w as i64 || yy >= h as i64 {
+                        continue;
+                    }
+                    let j = yy as usize * w + xx as usize;
+                    if d[j] + c < best {
+                        best = d[j] + c;
+                        bv = val[j];
+                    }
+                }
+                d[i] = best;
+                val[i] = bv;
+            }
+        }
+    }
+    (d, val)
 }
