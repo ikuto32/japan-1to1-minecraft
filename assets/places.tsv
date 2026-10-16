@@ -1,0 +1,45 @@
+id	ja	en	lat	lon	group
+fuji_summit	富士山頂（剣ヶ峰）	Mt. Fuji summit (Kengamine)	35.360681	138.727351	fuji
+fuji_fujinomiya5	富士山 富士宮口五合目	Mt. Fuji Fujinomiya 5th Station	35.336850	138.733000	fuji
+fuji_yoshida5	富士スバルライン五合目	Mt. Fuji Subaru Line 5th Station	35.395100	138.732700	fuji
+kawaguchiko	河口湖駅	Kawaguchiko Station	35.498030	138.768980	fuji
+fujiq	富士急ハイランド	Fuji-Q Highland	35.487000	138.780050	fuji
+oshino	忍野八海	Oshino Hakkai	35.460240	138.832700	fuji
+aokigahara	青木ヶ原樹海（富岳風穴）	Aokigahara forest (Fugaku Wind Cave)	35.479120	138.659440	fuji
+shiraito	白糸の滝	Shiraito Falls	35.312990	138.587220	fuji
+shizuoka_st	静岡駅	Shizuoka Station	34.971690	138.389320	shizuoka
+nihondaira	日本平	Nihondaira	34.976730	138.466620	shizuoka
+miho	三保の松原	Miho no Matsubara	34.994740	138.523800	shizuoka
+fujikawa_bridge	東海道新幹線 富士川橋梁	Tokaido Shinkansen Fujikawa Bridge	35.138130	138.630853	shizuoka
+makinohara	牧之原台地の茶畑	Makinohara tea plantations	34.795000	138.155000	shizuoka
+shizuoka_airport	富士山静岡空港	Mt. Fuji Shizuoka Airport	34.793770	138.191050	shizuoka
+okuoikojo	奥大井湖上駅	Okuoikojo Station	35.168030	138.181050	shizuoka
+hamamatsu_st	浜松駅	Hamamatsu Station	34.704010	137.734810	shizuoka
+kanzanji	浜名湖 舘山寺	Lake Hamana (Kanzanji)	34.768220	137.613090	shizuoka
+atami_st	熱海駅	Atami Station	35.103850	139.078120	izu
+mishima_skywalk	三島スカイウォーク	Mishima Skywalk	35.151880	138.980630	izu
+shuzenji	修善寺駅	Shuzenji Station	34.979370	138.950950	izu
+jogasaki	城ヶ崎海岸	Jogasaki Coast	34.890420	139.138580	izu
+dogashima	堂ヶ島	Dogashima	34.782410	138.767420	izu
+irozaki	石廊崎	Cape Irozaki	34.601950	138.846050	izu
+shimoda_st	伊豆急下田駅	Izukyu-Shimoda Station	34.679450	138.944320	izu
+oshima_mihara	伊豆大島 三原山	Izu Oshima, Mt. Mihara	34.724475	139.394436	izu
+owakudani	箱根 大涌谷	Hakone Owakudani	35.246490	139.024080	kanto
+hakone_sekisho	箱根関所（芦ノ湖）	Hakone Checkpoint (Lake Ashi)	35.192390	139.026390	kanto
+kamakura_daibutsu	鎌倉大仏	Great Buddha of Kamakura	35.316850	139.535720	kanto
+enoshima	江の島	Enoshima	35.299060	139.478950	kanto
+yokohama_st	横浜駅	Yokohama Station	35.466210	139.623200	kanto
+landmark_tower	横浜ランドマークタワー	Yokohama Landmark Tower	35.454580	139.631420	kanto
+takaosan	高尾山	Mt. Takao	35.625000	139.243900	kanto
+tokyo_st	東京駅	Tokyo Station	35.681140	139.767460	tokyo
+imperial_palace	皇居	Imperial Palace	35.682910	139.750380	tokyo
+tokyo_tower	東京タワー	Tokyo Tower	35.658581	139.745433	tokyo
+shibuya_st	渋谷駅	Shibuya Station	35.658080	139.701760	tokyo
+shinjuku_st	新宿駅	Shinjuku Station	35.690600	139.700300	tokyo
+meiji_jingu	明治神宮	Meiji Jingu	35.675920	139.700500	tokyo
+kaminarimon	浅草 雷門	Asakusa Kaminarimon	35.711120	139.796380	tokyo
+skytree	東京スカイツリー	Tokyo Skytree	35.710050	139.810710	tokyo
+haneda	羽田空港	Haneda Airport	35.553300	139.781100	tokyo
+kofu_st	甲府駅	Kofu Station	35.667080	138.569390	yamanashi
+shosenkyo	昇仙峡	Shosenkyo Gorge	35.745900	138.567490	yamanashi
+kitadake	北岳	Mt. Kita	35.674321	138.238808	yamanashi

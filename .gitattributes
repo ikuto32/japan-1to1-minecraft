@@ -1,0 +1,7 @@
+* text=auto
+# bash refuses CRLF scripts; Windows PowerShell 5.1 expects CRLF
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.dat binary
+*.bin binary

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teleport Commands — Japan 1:1 Minecraft World</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<header class="top"></header>
+<div class="app">
+  <aside class="side">
+    <h2 data-i18n="nav_tp"></h2>
+    <p data-i18n="tp_intro"></p>
+    <div class="row">
+      <input type="text" id="q" data-i18n-ph="search_ph">
+      <button id="qBtn" data-i18n="search"></button>
+    </div>
+    <div id="qRes" class="note"></div>
+    <div class="row">
+      <select id="places" style="flex:1"></select>
+    </div>
+    <h2 data-i18n="latlon"></h2>
+    <div class="row">
+      <input type="text" id="ll" placeholder="35.360681, 138.727351" style="flex:1">
+      <button id="llBtn" data-i18n="go"></button>
+    </div>
+    <h2 data-i18n="mc_xz"></h2>
+    <div class="row">
+      <input type="text" id="xz" placeholder="20585 70647" style="flex:1">
+      <button id="xzBtn" data-i18n="go"></button>
+    </div>
+
+    <h2 data-i18n="point"></h2>
+    <dl class="kv" id="info">
+      <dt data-i18n="latlon"></dt><dd id="iLL">–</dd>
+      <dt>X, Z</dt><dd id="iXZ">–</dd>
+      <dt data-i18n="elev"></dt><dd id="iElev">–</dd>
+      <dt data-i18n="ground_y"></dt><dd id="iY">–</dd>
+      <dt data-i18n="tile"></dt><dd id="iTile">–</dd>
+    </dl>
+    <p class="warn" id="outside" hidden data-i18n="outside"></p>
+    <div class="row">
+      <span data-i18n="height"></span>
+      <select id="hsel">
+        <option value="1" data-i18n="h_ground"></option>
+        <option value="30" data-i18n="h_30"></option>
+        <option value="100" data-i18n="h_100"></option>
+      </select>
+    </div>
+    <div class="cmdbox">
+      <div class="head"><span data-i18n="cmd_goto"></span><button class="copy" data-for="cGoto" data-i18n="copy"></button></div>
+      <pre class="cmd" id="cGoto">–</pre>
+    </div>
+    <div class="cmdbox">
+      <div class="head"><span data-i18n="cmd_tp"></span><button class="copy" data-for="cTp" data-i18n="copy"></button></div>
+      <pre class="cmd" id="cTp">–</pre>
+    </div>
+    <div class="cmdbox">
+      <div class="head"><span data-i18n="cmd_spread"></span><button class="copy" data-for="cSpread" data-i18n="copy"></button></div>
+      <pre class="cmd" id="cSpread">–</pre>
+    </div>
+    <p class="note" data-i18n="tp_note"></p>
+    <p class="note" data-i18n="tile_missing_note"></p>
+  </aside>
+  <div id="map"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/proj.js"></script>
+<script src="js/site.js"></script>
+<script src="js/teleport.js"></script>
+</body>
+</html>

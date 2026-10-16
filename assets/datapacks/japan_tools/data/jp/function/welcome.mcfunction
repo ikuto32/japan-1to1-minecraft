@@ -1,0 +1,2 @@
+tag @s add jp_seen
+tellraw @s [{"text": "日本1mワールド", "color": "gold", "bold": true}, {"text": " — "}, {"text": "[メニュー]", "color": "aqua", "click_event": {"action": "run_command", "command": "/function jp:menu"}, "hover_event": {"action": "show_text", "value": "クリックでメニューを開く"}}, {"text": "  /function jp:menu   "}, {"text": "[English]", "color": "aqua", "click_event": {"action": "run_command", "command": "/function jp:lang_en"}, "hover_event": {"action": "show_text", "value": "Show the menu in English"}}]

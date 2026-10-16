@@ -1,0 +1,354 @@
+﻿key,name,category,surface,subsurface,pattern,trees,tree_density_per_100m2,tree_height_m,groundcover,biome
+veg:010101,コケモモ－ハイマツ群集,alpine,gravel,gravel,none,dwarf_pine:1,25,1-2,,minecraft:stony_peaks
+veg:010201,コケモモ－ミネヤナギ群落,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020000,高山ハイデ及び風衝草原,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020101,コメバツガザクラ－ミネズオウ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020102,ウラシマツツジ－クロマメノキ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020301,ヒゲハリスゲ－オヤマノエンドウ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020402,キタダケソウ群落,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020600,コマクサ－イワツメクサクラス,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020602,フジハタザオ－オンタデ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020604,タカネビランジ－ミヤマミミナグサ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020606,コマクサ－タカネスミレ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:020608,コメススキ－イワツメクサ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:021002,コマウスユキソウ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:030203,タカネヤハズハハコ－アオノツガザクラ群集,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:030500,雪田荒原,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:050102,シラビソ－オオシラビソ群集,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:050104,コメツガ群落,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:050105,カラマツ群落,plantation,grass_block,dirt,none,larch:1,5,15-25,"short_grass:0.15,fern:0.05",minecraft:taiga
+veg:050107,イトスゲ－トウヒ群落,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:050109,マイヅルソウ－コメツガ群集,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:060100,ミドリユキザサ－ダケカンバ群団,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:060105,ミヤマハンノキ群落,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:060106,ダケカンバ群集,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:060107,ササ－ダケカンバ群落,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:060108,タカネノガリヤス－ダケカンバ群集,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:060110,フサガヤ－ヒロハカツラ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:060301,ダケカンバ群落（II）,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:070000,高茎草原及び風衝草原,alpine,gravel,gravel,none,,0,,"short_grass:0.15,dandelion:0.01",minecraft:stony_peaks
+veg:070100,シナノキンバイ－ミヤマキンポウゲ群団,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:070104,ミヤマイ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:070105,センジョウアザミ－ミヤマシシウド群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:070107,タテヤマアザミ－ホソバトリカブト群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:070200,ササ群落（II）,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:070500,シカ食害草原（II）,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:080100,ダケカンバ群落（III）,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:090100,ササ群落（III）,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:100000,伐採跡地群落（III）,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:110100,チシマザサ－ブナ群団,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130100,スズタケ－ブナ群団,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130101,ヤマボウシ－ブナ群集,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130104,オオモミジガサ－ブナ群集,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:130105,スズタケ－ブナ群集,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130106,シラキ－ブナ群集,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130108,クワガタソウ－ブナ群落,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130110,コアジサイ－ブナ群集,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130113,オオイタヤメイゲツ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130200,イヌブナ群落,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130202,コハクウンボク－イヌブナ群集,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130205,アブラツツジ－イヌブナ群集,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:130401,イヌシデ－アカシデ群落,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:140100,ウラジロモミ群落,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:140101,ウラジロモミ－コメツガ群落,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:140102,カニコウモリ－ウラジロモミ群集,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:140301,アカミノイヌツゲ－クロベ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:140400,クロベ－ヒメコマツ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:140600,ツガ群落,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:140601,コカンスゲ－ツガ群集,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:140800,ヒノキ群落,forest,podzol,dirt,none,"cypress:7,broadleaf:3",6,15-25,fern:0.08,minecraft:taiga
+veg:140801,シノブカグマ－ヒノキ群集,forest,podzol,dirt,none,"cypress:7,broadleaf:3",6,15-25,fern:0.08,minecraft:taiga
+veg:140802,シャクナゲ－ヒノキ群集,forest,podzol,dirt,none,"cypress:7,broadleaf:3",6,15-25,fern:0.08,minecraft:taiga
+veg:140804,マルバノキ－ヒノキ群集,forest,podzol,dirt,none,"cypress:7,broadleaf:3",6,15-25,fern:0.08,minecraft:taiga
+veg:140900,コウヤマキ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:141100,モミ群落,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:141300,ハリモミ群落,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:141400,サワラ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:141401,フジシダ－サワラ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:150100,アカマツ群落（IV）,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:160101,ジュウモンジシダ－サワグルミ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:160104,ヤマタイミンガサ－サワグルミ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:160201,ミヤマクマワラビ－シオジ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:160202,イワボタン－シオジ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:160300,ハルニレ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:160302,オニヒョウタンボク－ハルニレ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:160401,チャボガヤ－ケヤキ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:160403,オオモミジ－ケヤキ群集,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:160600,オオバアサガラ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:170102,ハンノキ－ヤチダモ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:170200,ハンノキ群落（IV）,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:170301,レンゲツツジ－ズミ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:180100,ヤナギ高木群落（IV）,forest,grass_block,dirt,none,willow:1,3,6-14,tall_grass:0.2,minecraft:swamp
+veg:180101,オオバヤナギ－ドロノキ群集,forest,grass_block,dirt,none,willow:1,3,6-14,tall_grass:0.2,minecraft:swamp
+veg:180200,ヤナギ低木群落（IV）,forest,grass_block,dirt,none,willow:1,3,6-14,tall_grass:0.2,minecraft:swamp
+veg:180400,ヤマハンノキ群落,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:180500,河辺ヤシャブシ群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:190000,岩角地・風衝地低木群落,rock,stone,stone,none,shrub:1,0.3,1-3,,minecraft:windswept_hills
+veg:190200,ヤシャブシ群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:191100,シロヤシオ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:191500,ジゾウカンバ群落,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:200000,なだれ地自然低木群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:200101,ヒメヤシャブシ－タニウツギ群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:210100,ササ群落（IV）,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:210101,ミクラザサ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:210102,チシマザサ群落（IV）,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:210201,フジアカショウマ－シモツケソウ群集,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:220000,落葉広葉樹二次林,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:220102,クリ－ミズナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:220103,オオバクロモジ－ミズナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:220104,ブナ二次林,forest,grass_block,dirt,none,"beech:7,broadleaf:3",4.5,15-25,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:220110,フクオウソウ－ミズナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:220300,ウダイカンバ群落,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:220500,コナラ群落（V）,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:220501,オクチョウジザクラ－コナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:220700,アカシデ－イヌシデ群落（V）,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:220900,シラカンバ群落,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:220902,レンゲツツジ－シラカンバ群集,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:221103,ミヤコザサ－ミズナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:221105,ヤエガワカンバ群落,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:221200,オニグルミ群落（V）,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:221300,ケヤキ二次林,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:221400,ダケカンバ群落（V）,forest,grass_block,dirt,none,"birch:7,fir:3",5,8-18,"short_grass:0.2,fern:0.05",minecraft:birch_forest
+veg:230100,アカマツ群落（V）,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:240000,落葉広葉低木群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:240101,ニシキウツギ－ノリウツギ群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:240102,タニウツギ－ノリウツギ群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:240600,クズ群落（V）,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:250100,ササ群落（V）,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:250103,スズタケ群落,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:250105,ハコネダケ群落,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:250200,ススキ群団（V）,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:250203,カワラマツバ－ススキ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:250204,ヤマトラノオ－ススキ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:250208,ヤマアワ－マルバダケブキ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:250601,ヤマカモジグサ－マルバダケブキ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:260000,伐採跡地群落（V）,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:270101,シラカシ群集,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:270200,アラカシ群落,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:270300,アカガシ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:270400,ツクバネガシ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:270500,ウラジロガシ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:270602,ルリミノキ－イチイガシ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271002,ユズリハ－ヤマグルマ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271003,イワナンテン－ヤマグルマ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271100,コジイ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271102,カナメモチ－コジイ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271201,ヤブコウジ－スダジイ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271203,ホソバカナワラビ－スダジイ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271204,オオシマカンスゲ－スダジイ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271205,ミミズバイ－スダジイ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:271600,タブノキ群落,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:271601,イノデ－タブノキ群集,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:271900,ウバメガシ群落（常緑広葉樹林）,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:272200,ハチジョウイヌツゲ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:280101,シキミ－モミ群集,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:280300,イヌマキ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:280400,ビャクシン群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:290100,アカマツ群落（VI）,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:290104,ヤマツツジ－アカマツ群集（自然林）,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:290105,ユキグニミツバツツジ－アカマツ群集（自然林）,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:290200,クロマツ群落（VI）,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:300100,ケヤキ群落（VI）,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:300101,コクサギ－ケヤキ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:300102,イロハモミジ－ケヤキ群集,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:300200,ムクノキ－エノキ群落,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:300201,ムクノキ－エノキ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:300300,ミズキ群落（VI）,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:310100,ハンノキ群落（VI）,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:310102,ハナノキ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:310200,クヌギ群落（VI）,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:320100,ヤナギ高木群落（VI）,forest,grass_block,dirt,none,willow:1,3,6-14,tall_grass:0.2,minecraft:swamp
+veg:320103,コゴメヤナギ群集,forest,grass_block,dirt,none,willow:1,3,6-14,tall_grass:0.2,minecraft:swamp
+veg:320200,ヤナギ低木群落（VI）,forest,grass_block,dirt,none,willow:1,3,6-14,tall_grass:0.2,minecraft:swamp
+veg:320203,ドクウツギ－アキグミ群集,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:320204,タチヤナギ群集,forest,grass_block,dirt,none,willow:1,3,6-14,tall_grass:0.2,minecraft:swamp
+veg:320300,カワラハンノキ群落,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:320401,タマアジサイ－フサザクラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:320600,河辺ヤシャブシ群落（VI）,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:330201,ニオイウツギ－オオバヤシャブシ群集,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:330203,ハチジョウススキ－オオバヤシャブシ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:330301,ガクアジサイ－ラセイタタマアジサイ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:330400,ハマボウ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:340101,マサキ－トベラ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:340201,トベラ－ウバメガシ群集,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:340700,オキナワハイネズ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:400100,シイ・カシ二次林,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:400101,ケヤキ－シラカシ群落,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:400102,アカガシ二次林,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:400103,スダジイ二次林,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:400104,シラカシ屋敷林,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:400200,タブノキ－ヤブニッケイ二次林,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:400500,マサキ－トベラ二次林,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:400600,ウバメガシ二次林,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:410100,コナラ群落（VII）,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410101,クリ－コナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410102,クヌギ－コナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410103,オニシバリ－コナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410105,アベマキ－コナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410106,ケネザサ－コナラ群集,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410111,フモトミズナラ群落,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410400,アカシデ－イヌシデ群落（VII）,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:410501,オオバエゴノキ－オオシマザクラ群集,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410600,オオバヤシャブシ群落（VII）,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:410601,ニオイウツギ－オオバヤシャブシ群集（二次林）,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:410700,アカメガシワ－カラスザンショウ群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:410800,ケヤキ群落（VII）,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410802,ケヤキ屋敷林,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:410900,ミズキ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:411300,ムクノキ群落,forest,grass_block,dirt,none,"broadleaf:8,evergreen_broadleaf:1,beech:1",4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:420100,アカマツ群落（VII）,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:420101,ヤマツツジ－アカマツ群集,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:420102,モチツツジ－アカマツ群集,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:420104,ユキグニミツバツツジ－アカマツ群集,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:430200,メダケ群落,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:430400,アズマネザサ群落,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:430500,ネザサ群落,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:440000,低木群落,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:440200,クズ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:450100,ススキ群団（VII）,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:450101,アズマネザサ－ススキ群集,shrub,grass_block,dirt,none,,0,,"fern:0.55,large_fern:0.15,short_grass:0.1",minecraft:forest
+veg:450103,チガヤ－ススキ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:450300,ウラジロ－コシダ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:450400,ダンチク群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:451502,ユノミネシダ群落,forest,grass_block,dirt,none,"broadleaf:6,evergreen_broadleaf:2,fir:2",4,8-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:451700,ハチジョウススキ群落（VII）,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:460000,伐採跡地群落（VII）,shrub,grass_block,dirt,none,"shrub:6,broadleaf:2",3,2-7,"tall_grass:0.25,short_grass:0.2",minecraft:forest
+veg:470100,ツルコケモモ－ミズゴケクラス,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470200,ヌマガヤオーダー,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470300,貧養地小型植物群落,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470400,ヨシクラス,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470401,ミゾソバ－ヨシ群落,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470501,ツルヨシ群集,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470502,オギ群集,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470504,カワラハハコ－ヨモギ群団,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:470506,カワラヨモギ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:470507,河川砂礫地外来草本群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:470508,河川砂礫地外来低木群落,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470509,フサフジウツギ群落,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470600,ヒルムシロクラス,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470602,外来水草群落,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470800,渓流辺植生,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470802,サツキ群集,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:470900,河辺一年生草本群落（タウコギクラス等）,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:480000,塩沼地植生,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:480100,ヒトモトススキ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:480400,アマモクラス,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:480901,カワツルモ－リュウノヒゲモ群落,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:490000,砂丘植生,sand,sand,sand,none,,0,,short_grass:0.05,minecraft:beach
+veg:500000,海岸断崖地植生,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:500302,イソギク－ハチジョウススキ群集,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:510100,石灰岩地植生,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:510300,岩壁植生,rock,stone,stone,none,shrub:1,0.3,1-3,,minecraft:windswept_hills
+veg:510402,ヒロハドウダンツツジ－アカマツ群落,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:510600,岩角地植生,rock,stone,stone,none,shrub:1,0.3,1-3,,minecraft:windswept_hills
+veg:510602,オノエラン－ハコネコメツツジ群集,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:510603,チョウジコメツツジ群集,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:510606,オオシマツツジ－リョウブ群落,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:520200,硫気孔原植生,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:520401,フジアザミ－ヤマホタルブクロ群集,wetland,grass_block,dirt,none,willow:1,0.2,6-12,"tall_grass:0.55,short_grass:0.2",minecraft:swamp
+veg:520600,ハチジョウイタドリ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:520601,シマタヌキラン－ハチジョウイタドリ群集,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:521401,ハチジョウススキ－ヒサカキ群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:540100,スギ・ヒノキ・サワラ植林,plantation,podzol,dirt,none,"cedar:6,cypress:4",7,18-30,fern:0.10,minecraft:old_growth_spruce_taiga
+veg:540101,スギ巨木林,plantation,podzol,dirt,none,cedar:1,4,30-45,fern:0.10,minecraft:old_growth_spruce_taiga
+veg:540200,アカマツ植林,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:540300,クロマツ植林,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:540700,カラマツ植林,plantation,grass_block,dirt,none,larch:1,5,15-25,"short_grass:0.15,fern:0.05",minecraft:taiga
+veg:540900,外国産樹種植林,plantation,grass_block,dirt,none,broadleaf:1,5,10-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:540902,ニセアカシア群落,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:540903,テーダマツ植林,forest,coarse_dirt,dirt,none,"pine:7,broadleaf:3",4.5,12-20,short_grass:0.1,minecraft:forest
+veg:541000,その他植林,plantation,grass_block,dirt,none,broadleaf:1,5,10-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:541100,その他植林（常緑針葉樹）,plantation,podzol,dirt,none,"cedar:5,cypress:5",6,15-25,fern:0.08,minecraft:taiga
+veg:541101,モミ植林,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:541102,ウラジロモミ植林,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:541103,シラビソ植林,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:541104,トウヒ植林,forest,podzol,dirt,none,"fir:6,spruce:4",6,12-25,fern:0.12,minecraft:old_growth_spruce_taiga
+veg:541200,その他植林（落葉広葉樹）,plantation,grass_block,dirt,none,broadleaf:1,5,10-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:541202,クヌギ植林,plantation,grass_block,dirt,none,broadleaf:1,5,10-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:541205,オオシマザクラ植林,plantation,grass_block,dirt,none,broadleaf:1,5,10-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:541300,その他植林（常緑広葉樹）,plantation,grass_block,dirt,none,broadleaf:1,5,10-18,"short_grass:0.05,fern:0.08",minecraft:forest
+veg:541301,クスノキ植林,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:541304,マテバシイ植林,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:541313,ヤブツバキ植林,forest,grass_block,dirt,none,"evergreen_broadleaf:8,broadleaf:2",5,10-20,fern:0.06,minecraft:dark_forest
+veg:541402,イタチハギ群落,grass,grass_block,dirt,none,,0,,short_grass:0.2,minecraft:plains
+veg:550000,竹林,bamboo,podzol,dirt,none,bamboo:1,30,10-16,,minecraft:bamboo_jungle
+veg:550100,モウソウチク林,bamboo,podzol,dirt,none,bamboo:1,30,10-16,,minecraft:bamboo_jungle
+veg:550200,マダケ・ハチク林,bamboo,podzol,dirt,none,bamboo:1,30,10-16,,minecraft:bamboo_jungle
+veg:560100,ゴルフ場・芝地,golf,grass_block,dirt,golf,broadleaf:1,0.15,8-14,,minecraft:meadow
+veg:560200,牧草地,grass,grass_block,dirt,none,,0,,short_grass:0.25,minecraft:meadow
+veg:570100,路傍・空地雑草群落,grass,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.35",minecraft:plains
+veg:570101,放棄畑雑草群落,grass,grass_block,dirt,none,shrub:1,0.3,1-3,"tall_grass:0.3,short_grass:0.4",minecraft:plains
+veg:570102,クサイ－ミノボロスゲ群集,grass,grass_block,dirt,none,,0,,short_grass:0.2,minecraft:plains
+veg:570200,果樹園,orchard,grass_block,dirt,orchard,fruit:1,0,3-5,short_grass:0.2,minecraft:forest
+veg:570201,茶畑,tea,grass_block,dirt,tea_rows,,0,1-1,,minecraft:forest
+veg:570202,常緑果樹園,orchard,grass_block,dirt,orchard,citrus:1,0,3-4,short_grass:0.2,minecraft:forest
+veg:570203,苗圃,grass,grass_block,dirt,none,,0,,short_grass:0.2,minecraft:plains
+veg:570300,畑雑草群落,farm,farmland[moisture=7],dirt,field,,0,,,minecraft:plains
+veg:570400,水田雑草群落,paddy,mud,dirt,paddy,,0,,,minecraft:swamp
+veg:570401,ワサビ田,grass,grass_block,dirt,none,,0,,short_grass:0.2,minecraft:plains
+veg:570500,放棄水田雑草群落,wetland,grass_block,dirt,none,,0,,"tall_grass:0.35,short_grass:0.4",minecraft:swamp
+veg:580100,市街地,urban,grass_block,dirt,none,broadleaf:1,0.15,5-9,short_grass:0.05,minecraft:plains
+veg:580101,緑の多い住宅地,residential,grass_block,dirt,none,"broadleaf:3,evergreen_broadleaf:2,cherry:1",0.6,5-10,short_grass:0.15,minecraft:plains
+veg:580102,太陽光発電施設,solar,gravel,gravel,solar,,0,,,minecraft:plains
+veg:580200,残存・植栽樹群をもった公園、墓地等,park,grass_block,dirt,none,"broadleaf:3,evergreen_broadleaf:2,cherry:2",1.2,6-14,short_grass:0.2,minecraft:plains
+veg:580300,工場地帯,industrial,gravel,gravel,none,,0,,,minecraft:plains
+veg:580400,造成地,bare,coarse_dirt,dirt,none,,0,,short_grass:0.05,minecraft:plains
+veg:580500,干拓地,grass,grass_block,dirt,none,,0,,short_grass:0.2,minecraft:plains
+veg:580600,開放水域,water,sand,sand,none,,0,,,minecraft:river
+veg:580700,自然裸地,bare,gravel,gravel,none,,0,,,minecraft:plains
+veg:580800,残存・植栽樹群地,park,grass_block,dirt,none,"broadleaf:3,evergreen_broadleaf:2",3,8-16,short_grass:0.15,minecraft:forest
+jaxa:1,水域,water,sand,sand,none,,0,,,minecraft:river
+jaxa:2,都市,urban,grass_block,dirt,none,broadleaf:1,0.1,5-9,short_grass:0.05,minecraft:plains
+jaxa:3,水田,paddy,mud,dirt,paddy,,0,,,minecraft:swamp
+jaxa:4,畑地,farm,farmland[moisture=7],dirt,field,,0,,,minecraft:plains
+jaxa:5,草地,grass,grass_block,dirt,none,,0,,"tall_grass:0.2,short_grass:0.35",minecraft:plains
+jaxa:6,落葉広葉樹,forest,grass_block,dirt,none,broadleaf:1,4.5,10-20,"short_grass:0.05,fern:0.08",minecraft:forest
+jaxa:7,落葉針葉樹,forest,grass_block,dirt,none,larch:1,5,15-25,short_grass:0.15,minecraft:taiga
+jaxa:8,常緑広葉樹,forest,grass_block,dirt,none,evergreen_broadleaf:1,5,10-20,fern:0.06,minecraft:dark_forest
+jaxa:9,常緑針葉樹,forest,podzol,dirt,none,"cedar:5,cypress:5",6,15-28,fern:0.10,minecraft:old_growth_spruce_taiga
+jaxa:10,裸地,bare,gravel,gravel,none,,0,,,minecraft:plains
+jaxa:11,竹林,bamboo,podzol,dirt,none,bamboo:1,30,10-16,,minecraft:bamboo_jungle
+jaxa:12,ソーラーパネル,solar,gravel,gravel,solar,,0,,,minecraft:plains
+jaxa:13,湿地,wetland,grass_block,dirt,none,,0,,"tall_grass:0.5,short_grass:0.2",minecraft:swamp
+jaxa:14,温室,greenhouse,grass_block,dirt,greenhouse,,0,,,minecraft:plains
+jaxa:15,その他,grass,grass_block,dirt,none,,0,,short_grass:0.2,minecraft:plains
+osm:crop=tea,茶畑 (OSM),tea,grass_block,dirt,tea_rows,,0,1-1,,minecraft:forest
+osm:landuse=greenhouse_horticulture,温室 (OSM),greenhouse,grass_block,dirt,greenhouse,,0,,,minecraft:plains
+osm:building=greenhouse,温室 (OSM),greenhouse,grass_block,dirt,greenhouse,,0,,,minecraft:plains
+osm:plant:source=solar,太陽光発電所 (OSM),solar,gravel,gravel,solar,,0,,,minecraft:plains
+osm:generator:source=solar,太陽光パネル (OSM),solar,gravel,gravel,solar,,0,,,minecraft:plains
+osm:aeroway=runway,滑走路 (OSM),airport,black_concrete,stone,runway,,0,,,minecraft:plains
+osm:aeroway=taxiway,誘導路 (OSM),airport,gray_concrete,stone,apron,,0,,,minecraft:plains
+osm:aeroway=apron,エプロン (OSM),airport,light_gray_concrete,stone,apron,,0,,,minecraft:plains
+osm:aeroway=helipad,ヘリパッド (OSM),airport,light_gray_concrete,stone,apron,,0,,,minecraft:plains
+osm:aeroway=aerodrome,空港敷地 (OSM),airport,grass_block,dirt,none,,0,,short_grass:0.05,minecraft:plains
+osm:landuse=cemetery,墓地 (OSM),cemetery,gravel,gravel,cemetery,,0,,,minecraft:plains
+osm:amenity=grave_yard,墓地 (OSM),cemetery,gravel,gravel,cemetery,,0,,,minecraft:plains
+osm:leisure=golf_course,ゴルフ場 (OSM),golf,grass_block,dirt,golf,broadleaf:1,0.15,8-14,,minecraft:meadow
+osm:leisure=pitch,競技場 (OSM),sports,grass_block,dirt,sports,,0,,,minecraft:plains
+osm:leisure=track,トラック (OSM),sports,red_terracotta,stone,none,,0,,,minecraft:plains
+osm:leisure=stadium,スタジアム (OSM),sports,grass_block,dirt,sports,,0,,,minecraft:plains
+osm:leisure=park,公園 (OSM),park,grass_block,dirt,none,"broadleaf:3,evergreen_broadleaf:2,cherry:2",1.2,6-14,"short_grass:0.2,poppy:0.005,dandelion:0.005",minecraft:plains
+osm:leisure=garden,庭園 (OSM),park,grass_block,dirt,none,"broadleaf:2,evergreen_broadleaf:2,pine:1,cherry:1",1.5,4-10,short_grass:0.2,minecraft:plains
+osm:leisure=playground,遊び場 (OSM),park,sand,sand,none,,0,,,minecraft:plains
+osm:amenity=parking,駐車場 (OSM),parking,gray_concrete,stone,parking,,0,,,minecraft:plains
+osm:landuse=quarry,採石場 (OSM),quarry,stone,stone,none,,0,,,minecraft:plains
+osm:landuse=landfill,処分場 (OSM),bare,coarse_dirt,dirt,none,,0,,,minecraft:plains
+osm:landuse=construction,工事中 (OSM),bare,coarse_dirt,dirt,none,,0,,,minecraft:plains
+osm:landuse=railway,鉄道用地 (OSM),industrial,gravel,gravel,none,,0,,,minecraft:plains
+osm:industrial=port,港湾 (OSM),port,polished_andesite,stone,none,,0,,,minecraft:plains
+osm:landuse=port,港湾 (OSM),port,polished_andesite,stone,none,,0,,,minecraft:plains
+osm:landuse=harbour,港湾 (OSM),port,polished_andesite,stone,none,,0,,,minecraft:plains
+osm:landuse=orchard,果樹園 (OSM),orchard,grass_block,dirt,orchard,fruit:1,0,3-5,short_grass:0.2,minecraft:forest
+osm:landuse=vineyard,ぶどう園 (OSM),orchard,grass_block,dirt,orchard,fruit:1,0,2-3,short_grass:0.2,minecraft:forest
+osm:landuse=paddy,水田 (OSM),paddy,mud,dirt,paddy,,0,,,minecraft:swamp
+osm:crop=rice,水田 (OSM),paddy,mud,dirt,paddy,,0,,,minecraft:swamp
+osm:landuse=farmland,農地 (OSM),farm,farmland[moisture=7],dirt,field,,0,,,minecraft:plains
+osm:landuse=industrial,工業地 (OSM),industrial,gravel,gravel,none,,0,,,minecraft:plains
+osm:landuse=commercial,商業地 (OSM),urban,grass_block,dirt,none,broadleaf:1,0.1,5-9,,minecraft:plains
+osm:landuse=retail,商業地 (OSM),urban,grass_block,dirt,none,broadleaf:1,0.1,5-9,,minecraft:plains
+osm:landuse=military,防衛施設 (OSM),urban,grass_block,dirt,none,,0,,short_grass:0.1,minecraft:plains
+osm:natural=beach,砂浜 (OSM),sand,sand,sand,none,,0,,,minecraft:beach
+osm:natural=bare_rock,岩場 (OSM),rock,stone,stone,none,,0,,,minecraft:stony_peaks
+osm:natural=scree,がれ場 (OSM),rock,gravel,gravel,none,,0,,,minecraft:stony_peaks
+osm:man_made=wastewater_plant,下水処理場 (OSM),industrial,gray_concrete,stone,none,,0,,,minecraft:plains

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tile Selector — Japan 1:1 Minecraft World</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<header class="top"></header>
+<div class="app">
+  <aside class="side">
+    <h2 data-i18n="nav_tiles"></h2>
+    <p data-i18n="tiles_intro"></p>
+    <div class="row">
+      <input type="text" id="q" data-i18n-ph="search_ph">
+      <button id="qBtn" data-i18n="search"></button>
+    </div>
+    <div id="qRes" class="note"></div>
+    <h2 data-i18n="presets"></h2>
+    <div class="chips" id="presets"></div>
+
+    <h2 data-i18n="sel_title"></h2>
+    <div class="stat"><span id="nSel">0</span> <small data-i18n="tiles_unit"></small></div>
+    <div class="kv" style="margin-top:4px">
+      <dt data-i18n="dl_size"></dt><dd><span id="dlSize">–</span><span id="est" class="note"></span></dd>
+      <dt data-i18n="disk_size"></dt><dd id="diskSize">–</dd>
+    </div>
+    <div class="row">
+      <button id="clear" data-i18n="clear"></button>
+      <button id="land" data-i18n="select_land"></button>
+    </div>
+    <p class="note" data-i18n="base_note"></p>
+
+    <div class="cmdbox">
+      <div class="head"><span data-i18n="win_cmd"></span><button class="copy" data-for="cmdWin" data-i18n="copy"></button></div>
+      <pre class="cmd" id="cmdWin"></pre>
+    </div>
+    <div class="cmdbox">
+      <div class="head"><span data-i18n="unix_cmd"></span><button class="copy" data-for="cmdUnix" data-i18n="copy"></button></div>
+      <pre class="cmd" id="cmdUnix"></pre>
+    </div>
+    <div class="row">
+      <button id="saveTxt" data-i18n="tiles_txt"></button>
+      <a id="relLink" target="_blank" rel="noopener" data-i18n="release_page"></a>
+    </div>
+    <p class="note" data-i18n="after_note"></p>
+    <details>
+      <summary data-i18n="manual"></summary>
+      <p class="note" data-i18n="manual_note"></p>
+      <div class="links" id="links"></div>
+    </details>
+  </aside>
+  <div id="map"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/proj.js"></script>
+<script src="js/site.js"></script>
+<script src="js/tiles.js"></script>
+</body>
+</html>

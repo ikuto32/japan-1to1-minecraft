@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Japan 1:1 Minecraft World</title>
+<meta name="description" content="Shizuoka, Yamanashi, Tokyo and the surrounding area at 1 block = 1 m for Minecraft Java Edition 1.21.11 / 静岡・山梨・東京などを 1 ブロック = 1 m で再現した Minecraft ワールド">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<header class="top"></header>
+<main class="hero">
+  <h1 data-i18n="brand"></h1>
+  <p data-i18n="home_lead"></p>
+  <p class="note" data-i18n="req"></p>
+  <div class="cards">
+    <div class="card">
+      <h3 data-i18n="home_tiles"></h3>
+      <p data-i18n="home_tiles_p"></p>
+      <a class="btn primary" href="tiles.html" data-i18n="open"></a>
+    </div>
+    <div class="card">
+      <h3 data-i18n="home_tp"></h3>
+      <p data-i18n="home_tp_p"></p>
+      <a class="btn primary" href="teleport.html" data-i18n="open"></a>
+    </div>
+    <div class="card">
+      <h3 data-i18n="home_game"></h3>
+      <p data-i18n="home_game_p"></p>
+      <code>/function jp:menu</code>
+    </div>
+  </div>
+  <h2 style="font-size:17px" data-i18n="gallery"></h2>
+  <div class="gallery" id="gallery"></div>
+  <p class="note" style="margin-top:18px">
+    <a id="repoLink" href="#" target="_blank" rel="noopener">GitHub</a> ·
+    <a id="licLink" href="#" target="_blank" rel="noopener" data-i18n="license_link"></a> ·
+    <a id="codeLicLink" href="#" target="_blank" rel="noopener" data-i18n="code_license"></a> ·
+    © OpenStreetMap contributors · 国土地理院 · 国土交通省 PLATEAU · 環境省 · JAXA · 静岡県
+  </p>
+</main>
+<script src="js/proj.js"></script>
+<script src="js/site.js"></script>
+<script>
+"use strict";
+const SHOTS = [
+  ["01_shizuoka_station", "静岡駅周辺", "Around Shizuoka Station"],
+  ["02_shin_tomei_shin_shizuoka_ic", "新東名 新静岡IC", "Shin-Tomei Expressway, Shin-Shizuoka IC"],
+  ["04_fujikawa_shinkansen_bridge", "東海道新幹線 富士川橋梁", "Tokaido Shinkansen Fujikawa Bridge"],
+  ["05_fuji_fujinomiya_trail", "富士山 富士宮ルート", "Mt. Fuji, Fujinomiya trail"],
+  ["06_makinohara_tea", "牧之原台地の茶畑", "Makinohara tea plantations"],
+  ["07_shizuoka_airport", "富士山静岡空港", "Mt. Fuji Shizuoka Airport"],
+  ["08_aokigahara", "青木ヶ原樹海", "Aokigahara forest"],
+  ["09_kofu_station", "甲府駅周辺", "Around Kofu Station"],
+];
+function renderGallery() {
+  const g = document.getElementById("gallery");
+  g.innerHTML = "";
+  for (const [f, ja, en] of SHOTS) {
+    const fig = document.createElement("figure");
+    fig.innerHTML = `<a href="check/${f}.png" target="_blank" rel="noopener"><img loading="lazy" src="check/${f}.png" alt=""></a><figcaption></figcaption>`;
+    fig.querySelector("figcaption").textContent = LANG === "ja" ? ja : en;
+    fig.querySelector("img").alt = LANG === "ja" ? ja : en;
+    g.appendChild(fig);
+  }
+}
+initHeader("index.html");
+renderGallery();
+document.addEventListener("langchange", renderGallery);
+loadJson("data/tiles.json").then((m) => {
+  document.getElementById("repoLink").href = `https://github.com/${m.repo}`;
+  document.getElementById("licLink").href = `https://github.com/${m.repo}/blob/main/assets/ATTRIBUTION.md`;
+  document.getElementById("codeLicLink").href = `https://github.com/${m.repo}/blob/main/LICENSE`;
+}).catch(() => {});
+</script>
+</body>
+</html>
