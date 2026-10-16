@@ -219,7 +219,7 @@ fn main() -> Result<()> {
             }
             let mut seen = std::collections::HashSet::new();
             tiles.retain(|t| seen.insert(*t));
-            features::run(&ctx, &tiles, o.get("concurrency", 3usize))?;
+            features::run(&ctx, &tiles, o.get("concurrency", 5usize))?;
         }
         "kihon" => ingest::kihon(&o.path("data", DEFAULT_DATA), &o.path("work", DEFAULT_WORK))?,
         "osm" => {
@@ -497,7 +497,7 @@ fn main() -> Result<()> {
                  \x20 network    [--work ...] [--heightmap ...]             bridge/tunnel profiles -> vec_net_struct.bin\n\
                  \x20 trees      [--forest DIR] [--las DIR] [--no-forest] [--no-las]  Shizuoka tree points / LiDAR canopy -> trees\\\n\
                  \x20 lcmap      [--lcmap config\\landcover_map.csv]         create/refresh the land-cover mapping table\n\
-                 \x20 features   [--out E:\\data\\features] [--tiles \"X,Z;...\"] [--concurrency 3]\n\
+                 \x20 features   [--out E:\\data\\features] [--tiles \"X,Z;...\"] [--concurrency 5]\n\
                  \x20 world      [--heightmap ...] [--features ...] [--world C:\\mc1m_world\\japan_dem_1m] [--force] [--level 6] [--around \"X,Z,R\"] [--regions \"rx,rz;...\"]\n\
                  \n\
                  checks:\n\

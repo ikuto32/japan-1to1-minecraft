@@ -312,11 +312,13 @@ fn bits_for(n: usize) -> usize {
 pub struct Pre {
     pub defs: Vec<BlockDef>,
     uniform: HashMap<BlockId, Vec<u8>>,
+    /// palette index of a block id in the section being written (u16::MAX = none)
+    pal_idx: Vec<u16>,
 }
 
 impl Pre {
     pub fn new() -> Self {
-        Pre { defs: Registry::get().snapshot(), uniform: HashMap::new() }
+        Pre { defs: Registry::get().snapshot(), uniform: HashMap::new(), pal_idx: vec![u16::MAX; 1 << 16] }
     }
     fn def(&mut self, id: BlockId) -> &BlockDef {
         if id as usize >= self.defs.len() {
@@ -324,18 +326,17 @@ impl Pre {
         }
         &self.defs[id as usize]
     }
-    fn uniform_states(&mut self, id: BlockId) -> Vec<u8> {
-        if let Some(v) = self.uniform.get(&id) {
-            return v.clone();
+    fn uniform_states(&mut self, id: BlockId) -> &[u8] {
+        if !self.uniform.contains_key(&id) {
+            let payload = self.def(id).nbt.clone();
+            let mut w = W::new();
+            w.begin_compound("block_states");
+            w.begin_list("palette", 10, 1);
+            w.buf.extend_from_slice(&payload);
+            w.end();
+            self.uniform.insert(id, w.buf);
         }
-        let payload = self.def(id).nbt.clone();
-        let mut w = W::new();
-        w.begin_compound("block_states");
-        w.begin_list("palette", 10, 1);
-        w.buf.extend_from_slice(&payload);
-        w.end();
-        self.uniform.insert(id, w.buf.clone());
-        w.buf
+        &self.uniform[&id]
     }
 }
 
@@ -422,35 +423,41 @@ pub fn chunk_nbt(pre: &mut Pre, cx: i32, cz: i32, cols: &[Col; 256], ovs: &[&[(i
         };
         match uniform {
             Some(bk) => {
-                let u = pre.uniform_states(bk);
-                w.buf.extend_from_slice(&u);
+                w.buf.extend_from_slice(pre.uniform_states(bk));
             }
             None => {
+                // palette in order of first use (column by column, bottom up)
                 let mut pal: Vec<BlockId> = Vec::with_capacity(8);
-                let mut map: HashMap<BlockId, u16> = HashMap::new();
                 for i in 0..256 {
                     let c = &cols[i];
-                    let ov = ovs[i];
-                    for ly in 0..16 {
-                        let y = y0 + ly;
-                        let mut bk = c.block(y, ids);
-                        if ov_here {
-                            if let Some(e) = ov.iter().find(|e| e.0 == y) {
-                                bk = e.1;
-                            }
-                        }
-                        let p = *map.entry(bk).or_insert_with(|| {
-                            pal.push(bk);
-                            (pal.len() - 1) as u16
-                        });
-                        blocks[ly as usize * 256 + i] = p;
+                    let mut col = [ids.air; 16];
+                    for (ly, b) in col.iter_mut().enumerate() {
+                        *b = c.block(y0 + ly as i32, ids);
                     }
+                    if ov_here {
+                        // overlay voxels are sorted by y, one per y
+                        let ov = ovs[i];
+                        let a = ov.partition_point(|e| e.0 < y0);
+                        for e in ov[a..].iter().take_while(|e| e.0 <= y1) {
+                            col[(e.0 - y0) as usize] = e.1;
+                        }
+                    }
+                    for (ly, &bk) in col.iter().enumerate() {
+                        let slot = &mut pre.pal_idx[bk as usize];
+                        if *slot == u16::MAX {
+                            *slot = pal.len() as u16;
+                            pal.push(bk);
+                        }
+                        blocks[ly * 256 + i] = *slot;
+                    }
+                }
+                for &bk in &pal {
+                    pre.pal_idx[bk as usize] = u16::MAX;
                 }
                 w.begin_compound("block_states");
                 w.begin_list("palette", 10, pal.len());
                 for &bk in &pal {
-                    let payload = pre.def(bk).nbt.clone();
-                    w.buf.extend_from_slice(&payload);
+                    w.buf.extend_from_slice(&pre.def(bk).nbt);
                 }
                 if pal.len() > 1 {
                     w.long_array("data", &pack(&blocks, bits_for(pal.len()).max(4)));
@@ -520,10 +527,16 @@ pub fn chunk_nbt(pre: &mut Pre, cx: i32, cz: i32, cols: &[Col; 256], ovs: &[&[(i
         let hi = base_top.max(ov_top);
         let (mut s, mut m, mut mn, mut f) = (None, None, None, None);
         let mut y = hi;
+        // overlay voxels at or below y: ov[..k] (sorted by y)
+        let ov = ovs[i];
+        let mut k = ov.len();
         while y >= MIN_Y && (s.is_none() || m.is_none() || mn.is_none() || f.is_none()) {
             let mut bk = if c.out { ids.air } else { c.block(y, ids) };
-            if let Some(e) = ovs[i].iter().find(|e| e.0 == y) {
-                bk = e.1;
+            while k > 0 && ov[k - 1].0 > y {
+                k -= 1;
+            }
+            if k > 0 && ov[k - 1].0 == y {
+                bk = ov[k - 1].1;
             }
             if bk != ids.air {
                 let d = pre.def(bk);
@@ -585,16 +598,27 @@ pub struct Extra<'a> {
 
 /// Build one region file (None if no chunk of it lies inside the area).
 pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32) -> Result<Option<(Vec<u8>, usize)>> {
+    use crate::world::{tadd, T_BLDG, T_COLS, T_DECOR, T_LIGHT, T_NBT, T_STRUCT, T_ZLIB};
     let g = Gen { n: RW, ox: inp.ox, oz: inp.oz, h: &inp.h, k: &inp.k, fx: &ex.fw, st: ex.st };
+    let t = std::time::Instant::now();
     let mut cols = g.columns();
     let mut ov = Overlay::new(RW * RW);
+    tadd(&T_COLS, t);
+    let t = std::time::Instant::now();
     let decks = crate::infra::apply(&g, &mut cols, &mut ov, &ex.structs);
+    tadd(&T_STRUCT, t);
+    let t = std::time::Instant::now();
     rgen::buildings(&g, &mut cols, &mut ov, &decks);
+    tadd(&T_BLDG, t);
+    let t = std::time::Instant::now();
     rgen::patterns(&g, &mut cols, &mut ov);
     rgen::trees(&g, &cols, &mut ov);
     rgen::plants(&g, &cols, &mut ov);
     ov.finish();
+    tadd(&T_DECOR, t);
+    let t = std::time::Instant::now();
     let extras = water_light_extras(&cols);
+    tadd(&T_LIGHT, t);
     let mut pre = Pre::new();
     let mut comp = libdeflater::Compressor::new(libdeflater::CompressionLvl::new(level as i32).unwrap_or_default());
     let mut cbuf: Vec<u8> = Vec::new();
@@ -618,9 +642,13 @@ pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32)
             if !any {
                 continue;
             }
+            let t = std::time::Instant::now();
             let raw = chunk_nbt(&mut pre, (rx * 32 + lx as i64) as i32, (rz * 32 + lz as i64) as i32, &cc, &ovs, &exs, &ex.st.biome_names);
+            tadd(&T_NBT, t);
+            let t = std::time::Instant::now();
             cbuf.resize(comp.zlib_compress_bound(raw.len()), 0);
             let m = comp.zlib_compress(&raw, &mut cbuf).map_err(|e| anyhow::anyhow!("deflate: {e:?}"))?;
+            tadd(&T_ZLIB, t);
             chunks[lz * 32 + lx] = Some(cbuf[..m].to_vec());
             nchunks += 1;
         }

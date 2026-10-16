@@ -401,7 +401,11 @@ pub static T_LIGHT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64:
 pub static T_NBT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static T_ZLIB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static T_WRITE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-fn tadd(a: &std::sync::atomic::AtomicU64, t: std::time::Instant) {
+pub static T_FEAT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static T_STRUCT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static T_BLDG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static T_DECOR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub fn tadd(a: &std::sync::atomic::AtomicU64, t: std::time::Instant) {
     a.fetch_add(t.elapsed().as_micros() as u64, std::sync::atomic::Ordering::Relaxed);
 }
 
@@ -554,7 +558,9 @@ pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str
                     c >= x0 - 20.0 && a <= x1 + 20.0 && d >= z0 - 20.0 && b <= z1 + 20.0
                 })
                 .collect();
+            let t = std::time::Instant::now();
             let ex = crate::chunk::Extra { fw: fs.window(inp.ox, inp.oz), st, structs: tile_structs };
+            tadd(&T_FEAT, t);
             if let Some((data, n)) = crate::chunk::build_region(&inp, &ex, rx, rz, o.level)? {
                 let t = std::time::Instant::now();
                 let tmp = path.with_extension("mca.tmp");
@@ -582,7 +588,19 @@ pub fn run(hm_dir: &Path, feat_dir: &Path, work: &Path, world: &Path, name: &str
     })?;
     }
     let g = |a: &std::sync::atomic::AtomicU64| a.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e6;
-    eprintln!("world: thread-seconds input {:.1}, columns {:.1}, water light {:.1}, chunk nbt {:.1}, zlib {:.1}, write {:.1}", g(&T_INPUT), g(&T_COLS), g(&T_LIGHT), g(&T_NBT), g(&T_ZLIB), g(&T_WRITE));
+    eprintln!(
+        "world: thread-seconds input {:.1}, features {:.1}, columns {:.1}, structures {:.1}, buildings {:.1}, patterns+trees {:.1}, water light {:.1}, chunk nbt {:.1}, zlib {:.1}, write {:.1}",
+        g(&T_INPUT),
+        g(&T_FEAT),
+        g(&T_COLS),
+        g(&T_STRUCT),
+        g(&T_BLDG),
+        g(&T_DECOR),
+        g(&T_LIGHT),
+        g(&T_NBT),
+        g(&T_ZLIB),
+        g(&T_WRITE)
+    );
     eprintln!(
         "world: done in {:.0}s: {} region files, {} chunks, {:.1} GB",
         t0.elapsed().as_secs_f64(),

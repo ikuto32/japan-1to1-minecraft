@@ -307,49 +307,87 @@ pub struct Gen<'a> {
     pub st: &'a SpecTable,
 }
 
-/// Chamfer distance (pixels, diagonal √2) to the nearest `src` pixel, capped.
+/// Euclidean distance (pixels) to the nearest `src` pixel, capped: exact,
+/// separable (Felzenszwalb & Huttenlocher), in parallel over column strips
+/// and rows.
 pub fn distance(src: &[bool], w: usize, h: usize, cap: f32) -> Vec<f32> {
-    let mut d: Vec<f32> = src.iter().map(|&s| if s { 0.0 } else { cap }).collect();
-    const D: f32 = 1.4142;
-    for y in 0..h {
-        for x in 0..w {
-            let i = y * w + x;
-            let mut v = d[i];
-            if x > 0 {
-                v = v.min(d[i - 1] + 1.0);
-            }
-            if y > 0 {
-                v = v.min(d[i - w] + 1.0);
-                if x > 0 {
-                    v = v.min(d[i - w - 1] + D);
+    use rayon::prelude::*;
+    const NONE: u32 = u32::MAX;
+    // 1) per column: rows to the nearest source pixel in the same column
+    let mut g = vec![NONE; w * h];
+    {
+        struct Ptr(*mut u32);
+        unsafe impl Sync for Ptr {}
+        let p = Ptr(g.as_mut_ptr());
+        const STRIP: usize = 64;
+        (0..w.div_ceil(STRIP)).into_par_iter().for_each(|k| {
+            let p = &p;
+            let (x0, x1) = (k * STRIP, ((k + 1) * STRIP).min(w));
+            // SAFETY: every strip writes only its own columns x0..x1
+            let at = |i: usize| unsafe { p.0.add(i) };
+            for y in 0..h {
+                for x in x0..x1 {
+                    let i = y * w + x;
+                    let v = if src[i] {
+                        0
+                    } else if y > 0 {
+                        unsafe { *at(i - w) }.saturating_add(1)
+                    } else {
+                        NONE
+                    };
+                    unsafe { *at(i) = v };
                 }
-                if x + 1 < w {
-                    v = v.min(d[i - w + 1] + D);
+            }
+            for y in (0..h.saturating_sub(1)).rev() {
+                for x in x0..x1 {
+                    let i = y * w + x;
+                    let below = unsafe { *at(i + w) }.saturating_add(1);
+                    unsafe {
+                        if below < *at(i) {
+                            *at(i) = below;
+                        }
+                    }
                 }
             }
-            d[i] = v;
-        }
+        });
     }
-    for y in (0..h).rev() {
-        for x in (0..w).rev() {
-            let i = y * w + x;
-            let mut v = d[i];
-            if x + 1 < w {
-                v = v.min(d[i + 1] + 1.0);
+    // 2) per row: lower envelope of the parabolas (x - q)² + g(q)²
+    const FAR: f64 = 1e12;
+    let mut out = vec![0f32; w * h];
+    out.par_chunks_mut(w).enumerate().for_each_init(
+        || (vec![0f64; w], vec![0usize; w], vec![0f64; w + 1]),
+        |(f, v, z), (y, row)| {
+            for x in 0..w {
+                let gv = g[y * w + x];
+                f[x] = if gv == NONE { FAR } else { (gv as f64) * (gv as f64) };
             }
-            if y + 1 < h {
-                v = v.min(d[i + w] + 1.0);
-                if x + 1 < w {
-                    v = v.min(d[i + w + 1] + D);
+            let isect = |f: &[f64], q: usize, r: usize| ((f[q] + (q * q) as f64) - (f[r] + (r * r) as f64)) / (2.0 * (q as f64 - r as f64));
+            let mut k = 0usize;
+            v[0] = 0;
+            z[0] = f64::NEG_INFINITY;
+            z[1] = f64::INFINITY;
+            for q in 1..w {
+                let mut s = isect(f, q, v[k]);
+                while s <= z[k] {
+                    k -= 1;
+                    s = isect(f, q, v[k]);
                 }
-                if x > 0 {
-                    v = v.min(d[i + w - 1] + D);
-                }
+                k += 1;
+                v[k] = q;
+                z[k] = s;
+                z[k + 1] = f64::INFINITY;
             }
-            d[i] = v;
-        }
-    }
-    d
+            k = 0;
+            for (q, o) in row.iter_mut().enumerate() {
+                while z[k + 1] < q as f64 {
+                    k += 1;
+                }
+                let dq = q as f64 - v[k] as f64;
+                *o = ((dq * dq + f[v[k]]).sqrt() as f32).min(cap);
+            }
+        },
+    );
+    out
 }
 
 impl<'a> Gen<'a> {
@@ -801,9 +839,10 @@ pub fn tree_voxels(species: &str, h: i32, x: i64, z: i64, out: &mut Vec<(i32, i3
             ellipsoid(h as f32 * 0.7, (h as f32 * 0.18).clamp(1.5, 3.5), h as f32 * 0.3, leaves("birch"), 0.85, out);
         }
         "bamboo" => {
-            let lg = b("bamboo[age=1,leaves=large,stage=0]");
-            let sm = b("bamboo[age=1,leaves=small,stage=0]");
-            let no = b("bamboo[age=1,leaves=none,stage=0]");
+            // stage 1: grown, so the stalks do not keep growing on random ticks
+            let lg = b("bamboo[age=1,leaves=large,stage=1]");
+            let sm = b("bamboo[age=1,leaves=small,stage=1]");
+            let no = b("bamboo[age=1,leaves=none,stage=1]");
             for y in 0..h {
                 let blk = if y >= h - 2 { lg } else if y >= h - 4 { sm } else { no };
                 out.push((0, y, 0, blk));
@@ -1285,6 +1324,34 @@ pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay, decks: &crate::in
         if let Some(i) = entrance {
             ov.put(i, base + 1, ids.air);
             ov.put(i, base + 2, ids.air);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn distance_is_exact_euclidean() {
+        // pseudo-random sources on grids of a few shapes, against brute force
+        for (w, h, density, cap) in [(61usize, 47usize, 37u64, 1e9f32), (130, 9, 251, 1e9), (17, 140, 911, 12.5), (64, 64, 4001, 1e9)] {
+            let src: Vec<bool> = (0..w * h).map(|i| super::hash3(i as i64, w as i64, density) % density as u32 == 0).collect();
+            let d = super::distance(&src, w, h, cap);
+            for y in 0..h {
+                for x in 0..w {
+                    let mut best = f64::INFINITY;
+                    for yy in 0..h {
+                        for xx in 0..w {
+                            if src[yy * w + xx] {
+                                let dd = ((x as f64 - xx as f64).powi(2) + (y as f64 - yy as f64).powi(2)).sqrt();
+                                best = best.min(dd);
+                            }
+                        }
+                    }
+                    let want = (best as f32).min(cap);
+                    let got = d[y * w + x];
+                    assert!((got - want).abs() < 1e-3 || (want >= cap && got >= cap), "({x},{y}) {w}x{h}: got {got}, want {want}");
+                }
+            }
         }
     }
 }
