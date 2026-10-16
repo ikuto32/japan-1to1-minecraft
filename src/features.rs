@@ -750,6 +750,7 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
         // harbour depth up to QUAY.0 m off quays, breakwaters and piers, gone at QUAY.1 m
         const QUAY: (f32, f32) = (500.0, 900.0);
         const WALL: f32 = 1.5;
+        const GREEN_WALL: f32 = 2.5;
         let hal = 960i64;
         let w2 = (TILE + 2 * hal) as usize;
         let (h2, k2) = ctx.ts.window(mx0 - hal, mz0 - hal, w2, w2)?;
@@ -792,8 +793,14 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
         }
         let bwd = crate::rgen::distance(&bw, w2, w2, 20.0);
         // quays: the land along the sea is built-up (JAXA) and stands WALL m above
-        // it within 10 m of the water. 1 = quay, 0 = other shore (beach, flat,
-        // natural coast, the levees of a river mouth)
+        // it within 10 m of the water. 1 = quay; 0.5 = a high wall that is not
+        // built up (a park along a canal, a sea wall), but not the levees of a
+        // river mouth (within 300 m of river water); 0 = other shore (beach,
+        // flat, natural coast)
+        let river = {
+            let m: Vec<bool> = k2.iter().map(|&c| c == K_INLAND).collect();
+            crate::rgen::distance(&m, w2, w2, 310.0)
+        };
         let top = {
             let lh: Vec<f32> = land.iter().zip(&h2).map(|(&l, &v)| if l { v } else { f32::NEG_INFINITY }).collect();
             max_filter(&lh, w2, w2, 10)
@@ -810,11 +817,17 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
                     0.0
                 } else {
                     let (la, lo) = llw.get(mx0 - hal + x as i64, mz0 - hal + z as i64);
-                    if ctx.lulc.at(la, lo) == 2 { 1.0 } else { 0.0 }
+                    if ctx.lulc.at(la, lo) == 2 {
+                        1.0
+                    } else if top[i] >= GREEN_WALL && river[i] > 300.0 {
+                        0.5
+                    } else {
+                        0.0
+                    }
                 }
             })
             .collect();
-        drop((land, top, bwd));
+        drop((land, top, bwd, river));
         let quay = Fill::new(&shore, w2, w2, 4);
         // the harbour depth reaches out to the quays and to the breakwaters and
         // piers
