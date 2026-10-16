@@ -24,7 +24,7 @@ Authority of Japan (GSI) and open data for roads, railways, buildings and vegeta
 | Buildings | About 16 million. PLATEAU 3D city models (150 municipalities, LOD2 roof shapes) and GSI building outlines. Walls, windows and roofs differ by use; every storey has a floor and you can walk in |
 | Land use | Rice paddies, fields, tea plantations (rows), orchards, greenhouses, solar farms, airports (runway markings), ports, dams, parks, cemeteries, parking lots… |
 | Vegetation | Species, density, height, undergrowth and biome for about 350 plant communities of the national vegetation map; no tall trees above the tree line. In Shizuoka, 89 million planted cedars and cypresses at their measured (airborne LiDAR) positions and heights, and point-cloud canopies around Shizuoka Station and Makinohara |
-| Sea floor | The GSI 1 m DEM's own sea bed where it has one (airborne laser bathymetry along some coasts), elsewhere ETOPO 2022 (15″ grid) eased in from the coastline; what lies deeper than the bottom of the world (about 270 m) is cut flat |
+| Sea floor | The GSI 1 m DEM's own sea bed where it has one (airborne laser bathymetry along some coasts, dredged docks), elsewhere ETOPO 2022 (15″ grid) eased in from the coastline; ports and canals are harbour-deep (3–12 m) off their quays, where the coarse grid shows land; what lies deeper than the bottom of the world (about 270 m) is cut flat |
 | Lakes | The Fuji Five Lakes and Lake Ashi have their surveyed depths (Lake Motosu: 121 m); other lakes and rivers shelve from the banks |
 | In-game tools | A data pack is included: `/function jp:menu` for landmarks, an elevation and latitude/longitude display and more ([below](#in-game-menu-data-pack)) |
 
@@ -118,7 +118,7 @@ If you try to go to a tile you have not downloaded, the data pack commands cance
 - Roads and railways missing from OpenStreetMap are not there. Where the GSI road edges are missing, roads have the standard width of their class.
 - Suspension and truss bridge superstructures and complex interchanges are simplified; undersea tunnels are not drawn. The heights of
   viaducts and depths of subways follow the OSM `layer` (e.g. layer -3 ≈ 24 m deep), not surveyed values.
-- The sea floor has the resolution of ETOPO 2022 (about 460 m); depths beyond about 270 m are flattened.
+- The sea floor has the resolution of ETOPO 2022 (about 460 m); depths beyond about 270 m are flattened. Harbour depths are estimated from the shore (quays), not charted.
 - The vegetation and land-cover maps can be older than today's land use.
 - Tree heights come from point clouds only in Shizuoka (elsewhere: typical heights per plant community).
 

@@ -736,22 +736,107 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
         }
     }
     // ---- sea floor: where the DEM has the sea bed (laser bathymetry along some
-    // coasts) its depth; elsewhere ETOPO 2022 below mean sea level, eased in
-    // over the first COAST m from the shore (the 15″ grid does not resolve the
-    // coastline) and blended into the DEM sea bed over BLEND m around it
+    // coasts, dredged docks) its depth; elsewhere ETOPO 2022 below mean sea
+    // level, eased in from the shore over COAST m or half the width of narrower
+    // water (the 15″ grid does not resolve the coastline) and blended into the
+    // DEM sea bed over BLEND m around it. Off quays the water is harbour-deep,
+    // where the coarse grid often shows land. Shore types and DEM depths are
+    // carried over the water by smooth fills, not by the nearest pixel (whose
+    // regions would show as straight stripes on the sea floor)
     if cls.iter().any(|&c| c == K_SEA) {
         const COAST: f32 = 300.0;
         const BLEND: f32 = 150.0;
-        let hal = 320i64;
+        const HARBOUR: f32 = 12.0;
+        // harbour depth up to QUAY.0 m off quays, breakwaters and piers, gone at QUAY.1 m
+        const QUAY: (f32, f32) = (500.0, 900.0);
+        const WALL: f32 = 1.5;
+        let hal = 960i64;
         let w2 = (TILE + 2 * hal) as usize;
         let (h2, k2) = ctx.ts.window(mx0 - hal, mz0 - hal, w2, w2)?;
         let land: Vec<bool> = k2.iter().map(|&c| matches!(c, K_LAND1 | K_LAND5 | K_HOLE)).collect();
-        let dist = crate::rgen::distance(&land, w2, w2, COAST + 10.0);
-        drop(land);
-        let dem: Vec<f32> = k2.iter().zip(&h2).map(|(&c, &v)| if c == K_SEA && v > crate::heightmap::SEA_FLOOR + 0.5 { (-v).max(1.0) } else { f32::NAN }).collect();
+        let dist = crate::rgen::distance(&land, w2, w2, QUAY.1 + 10.0);
+        // half the width of the water around (the largest distance from the shore
+        // within COAST m): a canal or a slip reaches the depth of the bay at its
+        // middle instead of staying a shallow shelf; the same within 100 m sets
+        // the depth of harbour water (shallower in narrow canals)
+        let wide = max_filter(&dist, w2, w2, COAST as usize);
+        let half = max_filter(&dist, w2, w2, 100);
+        // breakwaters and piers (基盤地図情報, OSM): they close harbours off but
+        // say nothing of the shore type (a breakwater mapped as a strip of land is
+        // low and bare)
+        let mut bw = vec![false; w2 * w2];
+        {
+            let sw = Win { x0: mx0 - hal, z0: mz0 - hal, n: w2 };
+            let kihon = |s: &str| matches!(s.split('|').next(), Some("防波堤" | "桟橋（鉄，コンクリート）"));
+            for (dx, dz) in (-1..=1).flat_map(|dz| (-1..=1).map(move |dx| (dx, dz))) {
+                for f in ctx.wstra.tile(tx + dx, tz + dz) {
+                    if kihon(&f.text) {
+                        sw.fill(&f.parts, |p| bw[p] = true);
+                    }
+                }
+                for f in ctx.wstrl.tile(tx + dx, tz + dz) {
+                    if kihon(&f.text) {
+                        sw.lines(&f.parts, |p| bw[p] = true);
+                    }
+                }
+                for f in ctx.osm_struct.tile(tx + dx, tz + dz) {
+                    if matches!(tag(&f.text, "man_made"), Some("breakwater" | "pier")) {
+                        if f.area {
+                            sw.fill(&f.parts, |p| bw[p] = true);
+                        } else {
+                            sw.lines(&f.parts, |p| bw[p] = true);
+                        }
+                    }
+                }
+            }
+        }
+        let bwd = crate::rgen::distance(&bw, w2, w2, 20.0);
+        // quays: the land along the sea is built-up (JAXA) and stands WALL m above
+        // it within 10 m of the water. 1 = quay, 0 = other shore (beach, flat,
+        // natural coast, the levees of a river mouth)
+        let top = {
+            let lh: Vec<f32> = land.iter().zip(&h2).map(|(&l, &v)| if l { v } else { f32::NEG_INFINITY }).collect();
+            max_filter(&lh, w2, w2, 10)
+        };
+        let llw = LlGrid::new(&ctx.lcc, mx0 - hal as i64, mz0 - hal as i64, w2 as i64, w2 as i64);
+        let shore: Vec<f32> = (0..w2 * w2)
+            .into_par_iter()
+            .map(|i| {
+                let (x, z) = (i % w2, i / w2);
+                let by_sea = (x > 0 && k2[i - 1] == K_SEA) || (x + 1 < w2 && k2[i + 1] == K_SEA) || (z > 0 && k2[i - w2] == K_SEA) || (z + 1 < w2 && k2[i + w2] == K_SEA);
+                if !land[i] || !by_sea || bwd[i] < 12.0 {
+                    f32::NAN
+                } else if top[i] < WALL {
+                    0.0
+                } else {
+                    let (la, lo) = llw.get(mx0 - hal + x as i64, mz0 - hal + z as i64);
+                    if ctx.lulc.at(la, lo) == 2 { 1.0 } else { 0.0 }
+                }
+            })
+            .collect();
+        drop((land, top, bwd));
+        let quay = Fill::new(&shore, w2, w2, 4);
+        // the harbour depth reaches out to the quays and to the breakwaters and
+        // piers
+        let qpts: Vec<bool> = shore.iter().zip(&bw).map(|(&v, &b)| v > 0.5 || b).collect();
+        drop((shore, bw));
+        // (smoothed: a fade on the plain distance would show its ridges, the
+        // lines midway between quays, as creases on the sea floor)
+        let qdist = box_blur(&crate::rgen::distance(&qpts, w2, w2, QUAY.1 + 10.0), w2, w2, 50);
+        drop(qpts);
+        let mut dem: Vec<f32> = k2.iter().zip(&h2).map(|(&c, &v)| if c == K_SEA && v > crate::heightmap::SEA_FLOOR + 0.5 { (-v).max(1.0) } else { f32::NAN }).collect();
         drop(h2);
+        // the DEM also has laser returns off the water surface along the shore
+        // (within the tide of mean sea level, -0.7..0 m in Tokyo Bay): a patch
+        // counts as the sea bed only where it reaches 2 m deep
+        keep_deep_patches(&mut dem, w2, w2, 2.0, 16);
         let has_dem = dem.iter().any(|v| v.is_finite());
-        let (ddist, dval) = if has_dem { nearest_value(&dem, w2, w2, BLEND + 10.0) } else { (Vec::new(), Vec::new()) };
+        let (ddist, dfill) = if has_dem {
+            let m: Vec<bool> = dem.iter().map(|v| v.is_finite()).collect();
+            (crate::rgen::distance(&m, w2, w2, BLEND + 10.0), Some(Fill::new(&dem, w2, w2, 4)))
+        } else {
+            (Vec::new(), None)
+        };
         let ll = LlGrid::new(&ctx.lcc, mx0, mz0, TILE, TILE);
         let hal = hal as usize;
         let smooth = |s: f32| s * s * (3.0 - 2.0 * s);
@@ -765,12 +850,27 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
                     row[x] = dem[wi];
                     continue;
                 }
+                let (px, pz) = ((x + hal) as f32 + 0.5, (z + hal) as f32 + 0.5);
                 let (la, lo) = ll.get(mx0 + x as i64, mz0 + z as i64);
                 let e = ctx.sea.as_ref().map(|s| s.at(la, lo)).unwrap_or(f32::NAN);
-                let mut d = if e.is_finite() { 1.0 + ((-e).max(1.0) - 1.0) * smooth((dist[wi] / COAST).min(1.0)) } else { f32::NAN };
-                if has_dem && ddist[wi] < BLEND {
-                    let far = if d.is_finite() { d } else { dval[wi] };
-                    d = dval[wi] + (far - dval[wi]) * smooth(ddist[wi] / BLEND);
+                let ease = (dist[wi] / wide[wi].clamp(20.0, COAST)).min(1.0);
+                let mut d = if e.is_finite() { 1.0 + ((-e).max(1.0) - 1.0) * smooth(ease) } else { f32::NAN };
+                // off a quay the water drops to harbour depth (3 m in a narrow canal
+                // .. HARBOUR m in a port basin) within a few metres
+                let wq = quay.at(px, pz).clamp(0.0, 1.0) * (1.0 - smooth(((qdist[wi] - QUAY.0) / (QUAY.1 - QUAY.0)).clamp(0.0, 1.0)));
+                if wq > 0.0 {
+                    let q = (3.0 + 0.05 * half[wi]).min(HARBOUR).min(2.0 + 0.5 * dist[wi]);
+                    let base = if d.is_finite() { d } else { 1.0 };
+                    if q > base {
+                        d = base + (q - base) * wq;
+                    }
+                }
+                if let Some(f) = &dfill {
+                    if ddist[wi] < BLEND {
+                        let dv = f.at(px, pz);
+                        let far = if d.is_finite() { d } else { dv };
+                        d = dv + (far - dv) * smooth(ddist[wi] / BLEND);
+                    }
                 }
                 if d.is_finite() {
                     row[x] = d.max(1.0);
@@ -1198,34 +1298,213 @@ pub fn run(ctx: &Ctx, tiles: &[(i64, i64)], concurrency: usize) -> Result<()> {
     Ok(())
 }
 
-/// Chamfer distance (pixels, diagonal √2) to the nearest finite value of
-/// `src` (capped), and that value.
-fn nearest_value(src: &[f32], w: usize, h: usize, cap: f32) -> (Vec<f32>, Vec<f32>) {
-    let mut d: Vec<f32> = src.iter().map(|v| if v.is_finite() { 0.0 } else { cap }).collect();
-    let mut val = src.to_vec();
-    const DG: f32 = std::f32::consts::SQRT_2;
-    for pass in 0..2 {
-        let (ys, xs): (Vec<usize>, Vec<usize>) = if pass == 0 { ((0..h).collect(), (0..w).collect()) } else { ((0..h).rev().collect(), (0..w).rev().collect()) };
-        let s: i64 = if pass == 0 { -1 } else { 1 };
-        for &y in &ys {
-            for &x in &xs {
-                let i = y * w + x;
-                let (mut best, mut bv) = (d[i], val[i]);
-                for (dx, dy, c) in [(s, 0i64, 1.0f32), (0, s, 1.0), (s, s, DG), (-s, s, DG)] {
-                    let (xx, yy) = (x as i64 + dx, y as i64 + dy);
-                    if xx < 0 || yy < 0 || xx >= w as i64 || yy >= h as i64 {
-                        continue;
-                    }
-                    let j = yy as usize * w + xx as usize;
-                    if d[j] + c < best {
-                        best = d[j] + c;
-                        bv = val[j];
+/// Smooth fill of a sparse field (push-pull): means over f×f px blocks, a
+/// pyramid of 2×2 means, and bilinear upsampling into the blocks without
+/// values. Blocks with values keep their mean.
+pub struct Fill {
+    w: usize,
+    h: usize,
+    f: usize,
+    v: Vec<f32>,
+}
+
+impl Fill {
+    pub fn new(src: &[f32], w: usize, h: usize, f: usize) -> Fill {
+        let (w0, h0) = (w.div_ceil(f), h.div_ceil(f));
+        let mut v0 = vec![0f32; w0 * h0];
+        let mut c0 = vec![0f32; w0 * h0];
+        v0.par_chunks_mut(w0).zip(c0.par_chunks_mut(w0)).enumerate().for_each(|(by, (vr, cr))| {
+            for y in by * f..((by + 1) * f).min(h) {
+                for x in 0..w {
+                    let s = src[y * w + x];
+                    if s.is_finite() {
+                        vr[x / f] += s;
+                        cr[x / f] += 1.0;
                     }
                 }
-                d[i] = best;
-                val[i] = bv;
+            }
+            for (v, c) in vr.iter_mut().zip(cr.iter_mut()) {
+                if *c > 0.0 {
+                    *v /= *c;
+                    *c = 1.0;
+                }
+            }
+        });
+        // push: (width, height, means, has values)
+        let mut lv = vec![(w0, h0, v0, c0)];
+        while lv.last().is_some_and(|l| l.0 > 1 || l.1 > 1) {
+            let (lw, lh, v, c) = lv.last().unwrap();
+            let (nw, nh) = (lw.div_ceil(2), lh.div_ceil(2));
+            let mut nv = vec![0f32; nw * nh];
+            let mut nc = vec![0f32; nw * nh];
+            for y in 0..nh {
+                for x in 0..nw {
+                    let (mut s, mut n) = (0f32, 0f32);
+                    for (cx, cy) in [(2 * x, 2 * y), (2 * x + 1, 2 * y), (2 * x, 2 * y + 1), (2 * x + 1, 2 * y + 1)] {
+                        if cx < *lw && cy < *lh && c[cy * lw + cx] > 0.0 {
+                            s += v[cy * lw + cx];
+                            n += 1.0;
+                        }
+                    }
+                    if n > 0.0 {
+                        nv[y * nw + x] = s / n;
+                        nc[y * nw + x] = 1.0;
+                    }
+                }
+            }
+            lv.push((nw, nh, nv, nc));
+        }
+        // pull
+        let top = lv.last().unwrap();
+        let mut filled = if top.3[0] > 0.0 { top.2.clone() } else { vec![f32::NAN] };
+        for k in (0..lv.len() - 1).rev() {
+            let (lw, lh, v, c) = &lv[k];
+            let (pw, ph) = (lv[k + 1].0, lv[k + 1].1);
+            let mut nf = vec![0f32; lw * lh];
+            nf.par_chunks_mut(*lw).enumerate().for_each(|(y, row)| {
+                for x in 0..*lw {
+                    let i = y * lw + x;
+                    row[x] = if c[i] > 0.0 { v[i] } else { bilinear(&filled, pw, ph, (x as f32 - 0.5) / 2.0, (y as f32 - 0.5) / 2.0) };
+                }
+            });
+            filled = nf;
+        }
+        Fill { w: w0, h: h0, f, v: filled }
+    }
+
+    /// The filled value at a point (pixel coordinates of the source).
+    pub fn at(&self, x: f32, y: f32) -> f32 {
+        let f = self.f as f32;
+        bilinear(&self.v, self.w, self.h, x / f - 0.5, y / f - 0.5)
+    }
+}
+
+/// Bilinear interpolation in a grid at fractional cell coordinates (cell
+/// centres at integers), clamped at the edges.
+fn bilinear(g: &[f32], w: usize, h: usize, x: f32, y: f32) -> f32 {
+    let x = x.clamp(0.0, (w - 1) as f32);
+    let y = y.clamp(0.0, (h - 1) as f32);
+    let (x0, y0) = (x.floor() as usize, y.floor() as usize);
+    let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+    let (fx, fy) = (x - x0 as f32, y - y0 as f32);
+    let a = g[y0 * w + x0] + (g[y0 * w + x1] - g[y0 * w + x0]) * fx;
+    let b = g[y1 * w + x0] + (g[y1 * w + x1] - g[y1 * w + x0]) * fx;
+    a + (b - a) * fy
+}
+
+/// Clears (to NaN) the 8-connected patches of finite values with fewer than
+/// `min_n` values of at least `deep`.
+fn keep_deep_patches(v: &mut [f32], w: usize, h: usize, deep: f32, min_n: usize) {
+    let mut seen = vec![false; v.len()];
+    let (mut stack, mut patch) = (Vec::new(), Vec::new());
+    for s in 0..v.len() {
+        if seen[s] || !v[s].is_finite() {
+            continue;
+        }
+        seen[s] = true;
+        stack.push(s);
+        patch.clear();
+        let mut n = 0;
+        while let Some(p) = stack.pop() {
+            patch.push(p);
+            if v[p] >= deep {
+                n += 1;
+            }
+            let (x, y) = (p % w, p / w);
+            for yy in y.saturating_sub(1)..(y + 2).min(h) {
+                for xx in x.saturating_sub(1)..(x + 2).min(w) {
+                    let q = yy * w + xx;
+                    if !seen[q] && v[q].is_finite() {
+                        seen[q] = true;
+                        stack.push(q);
+                    }
+                }
+            }
+        }
+        if n < min_n {
+            for &p in &patch {
+                v[p] = f32::NAN;
             }
         }
     }
-    (d, val)
+}
+
+/// Mean over a (2r+1)² square window, clamped at the edges (separable
+/// running sums).
+fn box_blur(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    fn line(src: &[f32], dst: &mut [f32], r: usize, pre: &mut Vec<f64>) {
+        pre.clear();
+        pre.push(0.0);
+        let mut acc = 0f64;
+        for &s in src {
+            acc += s as f64;
+            pre.push(acc);
+        }
+        for i in 0..src.len() {
+            let (a, b) = (i.saturating_sub(r), (i + r + 1).min(src.len()));
+            dst[i] = ((pre[b] - pre[a]) / (b - a) as f64) as f32;
+        }
+    }
+    let mut rows = vec![0f32; w * h];
+    rows.par_chunks_mut(w).zip(v.par_chunks(w)).for_each_init(Vec::new, |pre, (d, s)| line(s, d, r, pre));
+    let mut t = vec![0f32; w * h];
+    t.par_chunks_mut(h).enumerate().for_each(|(x, col)| {
+        for y in 0..h {
+            col[y] = rows[y * w + x];
+        }
+    });
+    drop(rows);
+    let mut tf = vec![0f32; w * h];
+    tf.par_chunks_mut(h).zip(t.par_chunks(h)).for_each_init(Vec::new, |pre, (d, s)| line(s, d, r, pre));
+    drop(t);
+    let mut out = vec![0f32; w * h];
+    out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        for x in 0..w {
+            row[x] = tf[x * h + y];
+        }
+    });
+    out
+}
+
+/// Maximum over a (2r+1)² square window (separable, monotonic deque per line).
+fn max_filter(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    fn line(src: &[f32], dst: &mut [f32], r: usize, q: &mut std::collections::VecDeque<usize>) {
+        let n = src.len();
+        q.clear();
+        let mut next = 0;
+        for i in 0..n {
+            // window [i - r, i + r]
+            while next < n && next <= i + r {
+                while q.back().is_some_and(|&b| src[b] <= src[next]) {
+                    q.pop_back();
+                }
+                q.push_back(next);
+                next += 1;
+            }
+            while q.front().is_some_and(|&f| f + r < i) {
+                q.pop_front();
+            }
+            dst[i] = src[*q.front().unwrap()];
+        }
+    }
+    let mut rows = vec![0f32; w * h];
+    rows.par_chunks_mut(w).zip(v.par_chunks(w)).for_each_init(std::collections::VecDeque::new, |q, (d, s)| line(s, d, r, q));
+    // columns: transpose, filter rows, transpose back
+    let mut t = vec![0f32; w * h];
+    t.par_chunks_mut(h).enumerate().for_each(|(x, col)| {
+        for y in 0..h {
+            col[y] = rows[y * w + x];
+        }
+    });
+    drop(rows);
+    let mut tf = vec![0f32; w * h];
+    tf.par_chunks_mut(h).zip(t.par_chunks(h)).for_each_init(std::collections::VecDeque::new, |q, (d, s)| line(s, d, r, q));
+    drop(t);
+    let mut out = vec![0f32; w * h];
+    out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        for x in 0..w {
+            row[x] = tf[x * h + y];
+        }
+    });
+    out
 }

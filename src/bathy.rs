@@ -226,6 +226,39 @@ impl Sea {
                 Some(a) => a.merge(tile),
             });
         }
+        // cells the grid has as land (where the coastline cuts through them, or a
+        // bay or a port is narrower than a cell) take the depth of the sea cells
+        // around, halved with every cell away from them: a small bay shoals from
+        // the depth at its mouth instead of being 0 m deep
+        if let Some(s) = &mut out {
+            let (w, h) = (s.w, s.h);
+            let sea: Vec<f32> = s.z.iter().map(|&z| if z < 0.0 { z } else { f32::NAN }).collect();
+            let f = crate::features::Fill::new(&sea, w, h, 1);
+            // cells (8-connected) to the nearest sea cell
+            let mut k: Vec<u32> = sea.iter().map(|v| if v.is_finite() { 0 } else { u32::MAX }).collect();
+            let mut q: std::collections::VecDeque<usize> = (0..w * h).filter(|&i| k[i] == 0).collect();
+            while let Some(i) = q.pop_front() {
+                let (r, c) = ((i / w) as i64, (i % w) as i64);
+                for (dr, dc) in [(-1i64, -1i64), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)] {
+                    let (rr, cc) = (r + dr, c + dc);
+                    if rr >= 0 && cc >= 0 && rr < h as i64 && cc < w as i64 {
+                        let j = rr as usize * w + cc as usize;
+                        if k[j] == u32::MAX {
+                            k[j] = k[i] + 1;
+                            q.push_back(j);
+                        }
+                    }
+                }
+            }
+            for r in 0..h {
+                for c in 0..w {
+                    let i = r * w + c;
+                    if k[i] > 0 {
+                        s.z[i] = f.at(c as f32 + 0.5, r as f32 + 0.5) * 0.5f32.powi(k[i].min(30) as i32);
+                    }
+                }
+            }
+        }
         Ok(out)
     }
 
