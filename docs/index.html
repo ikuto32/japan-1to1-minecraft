@@ -58,7 +58,7 @@ function renderGallery() {
   g.innerHTML = "";
   for (const [f, ja, en] of SHOTS) {
     const fig = document.createElement("figure");
-    fig.innerHTML = `<a href="check/${f}.png" target="_blank" rel="noopener"><img loading="lazy" src="check/${f}.png" alt=""></a><figcaption></figcaption>`;
+    fig.innerHTML = `<a href="check/${f}.png" target="_blank" rel="noopener"><img loading="lazy" src="check/web/${f}.webp" alt=""></a><figcaption></figcaption>`;
     fig.querySelector("figcaption").textContent = LANG === "ja" ? ja : en;
     fig.querySelector("img").alt = LANG === "ja" ? ja : en;
     g.appendChild(fig);
