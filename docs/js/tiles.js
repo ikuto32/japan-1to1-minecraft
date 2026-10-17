@@ -1,6 +1,8 @@
 // Tile selection page: pick tiles on the map, get the download commands.
 "use strict";
 
+let places = null; // data/places.json, loaded on the first search (landmarks rank first)
+
 const PRESETS = [
   { ja: "富士山", en: "Mt. Fuji", lat: 35.36, lon: 138.73, km: 14 },
   { ja: "富士五湖", en: "Fuji Five Lakes", lat: 35.49, lon: 138.7, km: 14 },
@@ -135,8 +137,8 @@ async function search() {
   const out = document.getElementById("qRes");
   if (!q) return;
   out.textContent = "…";
-  let res = [];
-  try { res = await gsiSearch(q); } catch (e) { res = []; }
+  if (!places) { try { places = await loadJson("data/places.json"); } catch (e) { places = []; } }
+  const res = await placeSearch(q, places);
   if (!res.length) { out.textContent = t("not_found"); return; }
   out.innerHTML = "";
   res.slice(0, 6).forEach((r, i) => {
@@ -146,7 +148,7 @@ async function search() {
     a.style.display = "block";
     a.addEventListener("click", (ev) => { ev.preventDefault(); map.setView([r.lat, r.lon], 12); });
     out.appendChild(a);
-    if (i === 0) map.setView([r.lat, r.lon], 12);
+    if (i === 0 && r.good) map.setView([r.lat, r.lon], 12);
   });
 }
 

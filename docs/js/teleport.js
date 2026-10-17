@@ -55,8 +55,7 @@ async function search() {
   const out = document.getElementById("qRes");
   if (!q) return;
   out.textContent = "…";
-  let res = [];
-  try { res = await gsiSearch(q); } catch (e) { res = []; }
+  const res = await placeSearch(q, places);
   if (!res.length) { out.textContent = t("not_found"); return; }
   out.innerHTML = "";
   res.slice(0, 6).forEach((r, i) => {
@@ -64,9 +63,10 @@ async function search() {
     a.href = "#";
     a.textContent = r.title + (r.inside ? "" : LANG === "ja" ? "（範囲外）" : " (outside the world)");
     a.style.display = "block";
-    a.addEventListener("click", (ev) => { ev.preventDefault(); setPoint(r.lat, r.lon, { pan: true }); });
+    a.addEventListener("click", (ev) => { ev.preventDefault(); setPoint(r.lat, r.lon, { pan: true, y: r.y }); });
     out.appendChild(a);
-    if (i === 0) setPoint(r.lat, r.lon, { pan: true });
+    // jump to the first result only when it matches the words (otherwise let the user pick)
+    if (i === 0 && r.good) setPoint(r.lat, r.lon, { pan: true, y: r.y });
   });
 }
 

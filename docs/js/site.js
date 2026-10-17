@@ -183,6 +183,28 @@ async function gsiSearch(q) {
   return res;
 }
 
+/**
+ * Place search for the search boxes: the site's landmark list (data/places.json) first, then GSI results
+ * whose title is or contains the words, then the rest. GSI's address search does not know every station
+ * (「東京駅」 only matches addresses with 「東」), so a result is `good` (safe to jump to) only when it matches.
+ * [{title, lat, lon, inside, good}]
+ */
+async function placeSearch(q, places = []) {
+  const n = (s) => (s || "").normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+  const nq = n(q);
+  const base = (s) => n(s).replace(/[（(].*$/, "");
+  const local = places
+    .filter((p) => n(p.ja).includes(nq) || n(p.en).includes(nq) || (base(p.ja).length >= 2 && nq.includes(base(p.ja))))
+    .map((p) => ({ title: LANG === "ja" ? p.ja : p.en, lat: p.lat, lon: p.lon, y: p.y, inside: true, good: true }));
+  let res = [];
+  try { res = await gsiSearch(q); } catch (e) { res = []; }
+  const rank = (r) => (n(r.title) === nq ? 0 : n(r.title).includes(nq) ? 1 : 2);
+  res.sort((a, b) => rank(a) - rank(b) || b.inside - a.inside);
+  res.forEach((r) => { r.good = rank(r) < 2; });
+  const seen = new Set(local.map((p) => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`));
+  return local.concat(res.filter((r) => !seen.has(`${r.lat.toFixed(3)},${r.lon.toFixed(3)}`)));
+}
+
 /** GSI elevation API: metres or null (sea / outside). */
 async function gsiElevation(lat, lon) {
   const r = await fetch(`https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=${lon}&lat=${lat}&outtype=JSON`);
