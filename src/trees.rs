@@ -34,6 +34,44 @@ pub const SP_FIR: u8 = 5;
 pub const SP_BROADLEAF: u8 = 6;
 pub const SP_BAMBOO: u8 = 7;
 pub const SP_EVERGREEN: u8 = 8;
+// street trees (東京都の街路樹): the species as listed
+pub const SP_CHERRY: u8 = 9;
+pub const SP_WILLOW: u8 = 10;
+pub const SP_GINKGO: u8 = 11;
+pub const SP_DECIDUOUS: u8 = 12;
+/// flag on a measured tree's species code: a street tree (may stand on a
+/// sidewalk, its crown may reach over the road high above it)
+pub const SP_STREET: u8 = 0x80;
+/// flag on a measured tree's species code: a tree filling out a closed canopy
+/// of the CHMv2 map around its tree tops (planted after every other tree)
+pub const SP_FILL: u8 = 0x40;
+
+/// Species of a street tree from its Japanese name (都道の街路樹).
+pub fn street_species(name: &str) -> u8 {
+    let n = name.trim();
+    let any = |v: &[&str]| v.iter().any(|k| n.contains(k));
+    if any(&["イチョウ"]) {
+        SP_GINKGO
+    } else if any(&["サクラ", "ザクラ", "モモ", "ウメ", "カイドウ"]) {
+        SP_CHERRY
+    } else if any(&["ヤナギ"]) {
+        SP_WILLOW
+    } else if any(&["マツ"]) {
+        SP_PINE
+    } else if any(&["ヒマラヤスギ", "モミ", "トウヒ", "コニファー", "イチイ"]) {
+        SP_FIR
+    } else if any(&["メタセコイア", "ラクウショウ", "カラマツ"]) {
+        SP_LARCH
+    } else if any(&["スギ"]) {
+        SP_CEDAR
+    } else if any(&["ヒノキ", "サワラ"]) {
+        SP_CYPRESS
+    } else if any(&["クス", "カシ", "シイ", "マテバ", "ヤマモモ", "モッコク", "ソヨゴ", "モチ", "マサキ", "ホルトノキ", "オガタマ", "ジョウリョク", "モクセイ", "シャリンバイ", "サカキ", "ツゲ", "ツバキ", "サザンカ", "タブ", "トキワ", "ヒイラギ", "アオキ", "ネズミモチ", "カナメ", "サンゴジュ", "ゲッケイ", "オリーブ", "ユズリハ"]) {
+        SP_EVERGREEN
+    } else {
+        SP_DECIDUOUS
+    }
+}
 
 pub fn species_code(name: &str) -> u8 {
     let n = name.trim();
@@ -68,6 +106,10 @@ pub fn species_name(code: u8, elev: f32, x: i64, z: i64) -> Option<&'static str>
         SP_FIR => "fir",
         SP_BAMBOO => "bamboo",
         SP_EVERGREEN => "evergreen_broadleaf",
+        SP_CHERRY => "cherry",
+        SP_WILLOW => "willow",
+        SP_GINKGO => "ginkgo",
+        SP_DECIDUOUS => "broadleaf",
         SP_BROADLEAF => {
             // lowland broadleaf forest in Shizuoka is mostly evergreen (シイ・カシ)
             let p = crate::rgen::unit(x, z, 61);

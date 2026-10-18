@@ -43,6 +43,9 @@ Step 'plateau' { & $exe plateau --plateau (Join-Path $Data 'PLATEAU') --work $Wo
 Step 'osm' { & $exe osm --data $Data --work $Work @area }               # OSM 道路・鉄道・ホーム・土地利用
 Step 'network' { & $exe network --work $Work --heightmap $Heightmap }   # 橋・トンネルの縦断形
 Step 'trees' { & $exe trees --data $Data --work $Work }                 # 静岡県 森林資源解析の単木・点群の樹冠高
+if (Test-Path (Join-Path $Data 'CHMv2\chm')) {                         # Meta/WRI CHMv2 樹冠高（静岡県外の森林以外の樹木）
+    Step 'chm2' { & $exe chm2 --data $Data --work $Work --heightmap $Heightmap }
+}
 Step 'lcmap' { & $exe lcmap --work $Work }                              # 植生・土地利用 → ブロックの対応表（無ければ作成、既存の調整は保持）
 # 5. 特徴量タイル（中身が変わったタイルだけ書き換える）
 Step 'features' { & $exe features --work $Work --heightmap $Heightmap --out $Features --data $Data }

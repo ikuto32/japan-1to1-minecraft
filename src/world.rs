@@ -411,7 +411,7 @@ pub fn tadd(a: &std::sync::atomic::AtomicU64, t: std::time::Instant) {
 
 /// Bump when the generator writes something else from the same inputs: the
 /// next `world` run then rebuilds every region once.
-pub const GEN_VERSION: u64 = 3;
+pub const GEN_VERSION: u64 = 7;
 
 /// Fast 64-bit hash for change detection (not for security).
 struct Hasher(u64);

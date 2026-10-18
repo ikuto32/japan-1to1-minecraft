@@ -171,6 +171,8 @@ impl Way {
             3 | 5 | 7 | 9 => 0.07,
             11..=16 | 23 => 0.1,
             STEPS => 0.8,
+            // footbridges and pedestrian underpasses: stairs and ramps at their ends
+            17..=20 | 22 => 0.3,
             _ => 0.12,
         }
     }
@@ -244,6 +246,82 @@ fn ground_at(ts: &TileSet, x: f64, z: f64, r: i64, up: bool) -> f32 {
     } else {
         f32::NAN
     }
+}
+
+/// Median height of the land across a road (±`hw` m along the normal (nx, nz)); NaN over water.
+fn cross_median(ts: &TileSet, x: f64, z: f64, nx: f64, nz: f64, hw: f64) -> f32 {
+    let mut v: Vec<f32> = Vec::new();
+    let k = hw.ceil() as i64;
+    for o in -k..=k {
+        let o = (o as f64).clamp(-hw, hw);
+        if let Ok(Some((h, c))) = ts.sample((x + nx * o).floor() as i64, (z + nz * o).floor() as i64) {
+            if matches!(c, K_LAND1 | K_LAND5 | K_HOLE) {
+                v.push(h);
+            }
+        }
+    }
+    if v.is_empty() {
+        return f32::NAN;
+    }
+    v.sort_by(|a, b| a.total_cmp(b));
+    v[v.len() / 2]
+}
+
+/// Height of the road surface where a ground way meets a structure at its
+/// vertex `k`: the land across the way sampled every 2 m up to 20 m away
+/// from the vertex in each direction the way leaves it, extrapolated back to
+/// the vertex (a line fitted per direction, its slope limited). The ground
+/// right at a tunnel mouth is the hillside above it, and at a bridge end often
+/// the valley side; the road leading away from them is not. NaN if the way
+/// lies on water there.
+fn road_height_at(ts: &TileSet, w: &VFeat, k: usize, hw: f64) -> f32 {
+    let p = &w.parts[0];
+    let mut est: Vec<f64> = Vec::new();
+    for dir in [-1i64, 1] {
+        // walk from vertex k along the way
+        let mut samples: Vec<(f64, f64)> = Vec::new();
+        let mut j = k as i64;
+        let mut acc = 0.0;
+        let mut next_d = 2.0;
+        while next_d <= 20.0 {
+            let jn = j + dir;
+            if jn < 0 || jn as usize >= p.len() {
+                break;
+            }
+            let (a, b) = (p[j as usize], p[jn as usize]);
+            let l = (b[0] - a[0]).hypot(b[1] - a[1]);
+            if l < 1e-6 {
+                j = jn;
+                continue;
+            }
+            let (dx, dz) = ((b[0] - a[0]) / l, (b[1] - a[1]) / l);
+            while next_d <= 20.0 && next_d <= acc + l {
+                let t = next_d - acc;
+                let h = cross_median(ts, a[0] + dx * t, a[1] + dz * t, -dz, dx, hw);
+                if h.is_finite() {
+                    samples.push((next_d, h as f64));
+                }
+                next_d += 2.0;
+            }
+            acc += l;
+            j = jn;
+        }
+        if samples.len() >= 3 {
+            let n = samples.len() as f64;
+            let (md, mh) = (samples.iter().map(|s| s.0).sum::<f64>() / n, samples.iter().map(|s| s.1).sum::<f64>() / n);
+            let (mut sxy, mut sxx) = (0.0, 0.0);
+            for &(d, h) in &samples {
+                sxy += (d - md) * (h - mh);
+                sxx += (d - md) * (d - md);
+            }
+            let slope = if sxx > 0.0 { (sxy / sxx).clamp(-0.15, 0.15) } else { 0.0 };
+            est.push(mh - slope * md);
+        }
+    }
+    if est.is_empty() {
+        return f32::NAN;
+    }
+    (est.iter().sum::<f64>() / est.len() as f64) as f32
 }
 
 /// Median of (centre − mean of both sides, 20 m beyond the way) along a way:
@@ -419,7 +497,7 @@ fn filter(g: &Graph, vals: &[f64], mask: &[bool], r: f64, op: Op) -> Vec<f64> {
 /// Enforce the grade along the network: for bridges raise every node to at
 /// least h_v − grade·d of any other node (no dips), for tunnels lower it to at
 /// most h_v + grade·d (no humps). Fixed nodes stay.
-fn grade_limit(g: &Graph, h: &mut [f64], movable: &[bool], up: bool) {
+fn grade_limit(g: &Graph, h: &mut [f64], movable: &[bool], up: bool, cap: &[f64]) {
     let s = if up { -1.0 } else { 1.0 }; // heap pops the highest (up) / lowest (down) first
     let mut heap = BinaryHeap::new();
     for v in 0..h.len() {
@@ -437,7 +515,10 @@ fn grade_limit(g: &Graph, h: &mut [f64], movable: &[bool], up: bool) {
             if !movable[u] {
                 continue;
             }
-            let cand = if up { hv - len as f64 * gr as f64 } else { hv + len as f64 * gr as f64 };
+            // never past the cap (where two anchors are further apart in height than
+            // the grade allows, the deck keeps to the line between them instead of
+            // dropping off a cliff at the lower one)
+            let cand = if up { (hv - len as f64 * gr as f64).min(cap[u]) } else { (hv + len as f64 * gr as f64).max(cap[u]) };
             if !h[u].is_finite() || (up && cand > h[u] + 1e-9) || (!up && cand < h[u] - 1e-9) {
                 h[u] = cand;
                 heap.push(Item(s * cand, u as u32, 0));
@@ -465,7 +546,7 @@ fn densify(pts: &[[f64; 2]], step: f64) -> (Vec<[f64; 2]>, Vec<bool>) {
 }
 
 /// Heights of one connected component of structure ways.
-fn solve(ts: &TileSet, ways: &[Way], comp: &[usize], ground_nodes: &HashMap<(bool, (i64, i64)), u8>, touch: &HashMap<(bool, (i64, i64)), u32>) -> Vec<(usize, Vec<[f64; 2]>, Vec<f32>)> {
+fn solve(ts: &TileSet, ways: &[Way], comp: &[usize], ground_nodes: &HashMap<(bool, (i64, i64)), u8>, touch: &HashMap<(bool, (i64, i64)), u32>, gw_at: &HashMap<(bool, (i64, i64)), Vec<(usize, usize)>>) -> Vec<(usize, Vec<[f64; 2]>, Vec<f32>)> {
     // ---- nodes
     let mut node_of: HashMap<(i64, i64), u32> = HashMap::new();
     let (mut xs, mut zs): (Vec<f64>, Vec<f64>) = (Vec::new(), Vec::new());
@@ -565,6 +646,29 @@ fn solve(ts: &TileSet, ways: &[Way], comp: &[usize], ground_nodes: &HashMap<(boo
         let dead_end = !rail && flags[i] & 1 != 0 && touch.get(&(rail, k)).copied().unwrap_or(0) <= 1 && g.nb(i).len() <= 1;
         if both || held || dead_end {
             anchor[i] = gr[i];
+            if held && !both {
+                // the height of the ground road there, from the road leading away
+                let mut v: Vec<f64> = Vec::new();
+                for &(gwi, gk) in gw_at.get(&(rail, k)).map(|l| l.as_slice()).unwrap_or(&[]) {
+                    let gw = &ways[gwi];
+                    if vehicle_road[i] && !(!gw.rail && vehicle(gw.f.class)) {
+                        continue;
+                    }
+                    let hw = if gw.rail {
+                        let tracks = (gw.f.nums[0].round() as f64).clamp(1.0, 8.0);
+                        (tracks - 1.0) * 2.0 + 1.5
+                    } else {
+                        (crate::infra::road_width(gw.f.class, gw.f.nums, &gw.f.text) as f64 / 2.0).clamp(1.5, 6.0)
+                    };
+                    let h = road_height_at(ts, &gw.f, gk, hw);
+                    if h.is_finite() {
+                        v.push(h as f64);
+                    }
+                }
+                if !v.is_empty() {
+                    anchor[i] = v.iter().sum::<f64>() / v.len() as f64;
+                }
+            }
         }
     }
     let anchors: Vec<(u32, f64)> = (0..n).filter(|&i| anchor[i].is_finite()).map(|i| (i as u32, anchor[i])).collect();
@@ -590,6 +694,8 @@ fn solve(ts: &TileSet, ways: &[Way], comp: &[usize], ground_nodes: &HashMap<(boo
     let td = filter(&g, &filter(&g, &t, &down_mask, 20.0, Op::Min), &down_mask, 15.0, Op::Mean);
     // ---- combine with the line between the nearest anchors
     let mut h = vec![0f64; n];
+    // how far the grade limit may raise (bridges) or lower (tunnels) a node
+    let mut cap = vec![f64::NAN; n];
     for i in 0..n {
         if anchor[i].is_finite() {
             h[i] = anchor[i];
@@ -609,15 +715,19 @@ fn solve(ts: &TileSet, ways: &[Way], comp: &[usize], ground_nodes: &HashMap<(boo
             // span (valleys); long viaducts follow the ground
             let b = base.filter(|b| b.1 < 2000.0).map(|b| b.0).unwrap_or(f64::NEG_INFINITY);
             h[i] = b.max(tu[i]).min(up_lim[i].max(b));
+            cap[i] = up_lim[i].max(base.map(|b| b.0).unwrap_or(f64::NEG_INFINITY)).max(h[i]);
         } else {
             let b = base.map(|b| b.0).unwrap_or(f64::INFINITY);
             h[i] = b.min(td[i]).max(down_lim[i].min(b));
+            cap[i] = down_lim[i].min(b).min(h[i]);
         }
     }
     let movable_up: Vec<bool> = (0..n).map(|i| is_up[i] && !anchor[i].is_finite()).collect();
     let movable_down: Vec<bool> = (0..n).map(|i| is_down[i] && !anchor[i].is_finite()).collect();
-    grade_limit(&g, &mut h, &movable_up, true);
-    grade_limit(&g, &mut h, &movable_down, false);
+    let cap_up: Vec<f64> = (0..n).map(|i| if is_up[i] && cap[i].is_finite() { cap[i] } else { f64::INFINITY }).collect();
+    let cap_down: Vec<f64> = (0..n).map(|i| if is_down[i] && cap[i].is_finite() { cap[i] } else { f64::NEG_INFINITY }).collect();
+    grade_limit(&g, &mut h, &movable_up, true, &cap_up);
+    grade_limit(&g, &mut h, &movable_down, false, &cap_down);
     way_nodes.into_iter().map(|(wi, pts, ids)| (wi, pts, ids.iter().map(|&i| h[i as usize] as f32).collect())).collect()
 }
 
@@ -761,6 +871,20 @@ pub fn run(work: &Path, hm_dir: &Path) -> Result<()> {
             *ground_nodes.entry((w.rail, key(*q))).or_default() |= bit;
         }
     }
+    // ground ways at the vertices of structure ways (the heights of bridge ends and portals)
+    let svkeys: HashSet<(bool, (i64, i64))> = ways.iter().filter(|w| w.mode != Mode::Ground).flat_map(|w| w.f.parts[0].iter().map(move |q| (w.rail, key(*q)))).collect();
+    let mut gw_at: HashMap<(bool, (i64, i64)), Vec<(usize, usize)>> = HashMap::new();
+    for (wi, w) in ways.iter().enumerate() {
+        if w.mode != Mode::Ground {
+            continue;
+        }
+        for (k, q) in w.f.parts[0].iter().enumerate() {
+            let kk = (w.rail, key(*q));
+            if svkeys.contains(&kk) {
+                gw_at.entry(kk).or_default().push((wi, k));
+            }
+        }
+    }
     // connected components of structure ways (shared vertices, same kind)
     let sids: Vec<usize> = (0..ways.len()).filter(|&i| ways[i].mode != Mode::Ground).collect();
     let mut parent: Vec<usize> = (0..ways.len()).collect();
@@ -807,7 +931,7 @@ pub fn run(work: &Path, hm_dir: &Path) -> Result<()> {
     let out: Vec<Vec<VFeat>> = comps
         .par_iter()
         .map(|comp| {
-            solve(&ts, &ways, comp, &ground_nodes, &touch)
+            solve(&ts, &ways, comp, &ground_nodes, &touch, &gw_at)
                 .into_iter()
                 .map(|(wi, p, z)| {
                     let w = &ways[wi];

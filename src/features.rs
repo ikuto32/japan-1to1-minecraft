@@ -126,6 +126,8 @@ pub struct Ctx {
     kihon_bldg: TiledReader,
     wstra: TiledReader,
     wstrl: TiledReader,
+    /// street trees (Tokyo): X, Z, height m, species code
+    pub street_trees: Vec<(f64, f64, f32, u8)>,
 }
 
 impl Ctx {
@@ -163,6 +165,7 @@ impl Ctx {
             kihon_bldg: TiledReader::open(&work.join("vec_kihon_blda.bin"))?,
             wstra: TiledReader::open(&work.join("vec_kihon_wstra.bin"))?,
             wstrl: TiledReader::open(&work.join("vec_kihon_wstrl.bin"))?,
+            street_trees: load_street_trees(&data.join("東京都街路樹"), &Lcc::new()),
         })
     }
 
@@ -390,8 +393,12 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
                 }
             }
         } else {
+            // a park or garden mapped over woodland keeps the vegetation map's
+            // forest (wooded hills, and mountain slopes inside a park boundary)
+            let park = i > 0 && matches!(ctx.classes[i as usize - 1].key.as_str(), "osm:leisure=park" | "osm:leisure=garden");
+            let woodland = |l: u16| l > 0 && ctx.classes[l as usize - 1].key.starts_with("veg:") && matches!(cat(l), "forest" | "plantation" | "bamboo" | "shrub" | "alpine");
             for p in pix {
-                if cat(lc[p]) != "water" {
+                if cat(lc[p]) != "water" && !(park && woodland(lc[p])) {
                     lc[p] = i;
                 }
             }
@@ -411,8 +418,11 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
     }
     // runways and taxiways mapped as centre lines (closed areas come with the areas above)
     let osm_struct = ctx.osm_struct.tile(tx, tz);
-    let mut runways: Vec<(Vec<[f64; 2]>, Vec<f64>, f64)> = Vec::new(); // densified px line, arc, half width
-    for f in &osm_struct {
+    // densified px line, arc, half width, runway (else taxiway)
+    let mut runways: Vec<(Vec<[f64; 2]>, Vec<f64>, f64, bool)> = Vec::new();
+    // taxiways first: a runway crossing them stays whole
+    let is_aero = |f: &VFeat, v: &str| tag(&f.text, "aeroway") == Some(v);
+    for f in osm_struct.iter().filter(|f| is_aero(f, "taxiway")).chain(osm_struct.iter().filter(|f| is_aero(f, "runway"))) {
         let kind = tag(&f.text, "aeroway");
         let (Some(k @ ("runway" | "taxiway")), false) = (kind, f.area) else { continue };
         let width: f64 = tag(&f.text, "width").and_then(|v| v.trim_end_matches(" m").parse().ok()).unwrap_or(if k == "runway" { 45.0 } else { 23.0 });
@@ -420,15 +430,19 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
         let px: Vec<[f64; 2]> = f.parts[0].iter().map(|q| [q[0] - w.x0 as f64, q[1] - w.z0 as f64]).collect();
         let (pts, arc) = crate::roads::densify(&px, 2.0);
         for k2 in 0..pts.len().saturating_sub(1) {
-            crate::roads::segment_pixels(n, pts[k2], pts[k2 + 1], width / 2.0, |p, _, _| {
+            crate::roads::segment_pixels(n, pts[k2], pts[k2 + 1], width / 2.0, |p, _, t| {
+                // a runway ends square at its thresholds: perpendicular
+                // projections only (each short piece's round cap would reach
+                // past the end); taxiways keep round joins
+                if k == "runway" && (t <= 0.0 || t >= 1.0) {
+                    return;
+                }
                 if cls[p] != K_SEA && cls[p] != K_INLAND && cls[p] != K_OUT {
                     lc[p] = cls_i;
                 }
             });
         }
-        if k == "runway" {
-            runways.push((pts, arc, width / 2.0));
-        }
+        runways.push((pts, arc, width / 2.0, k == "runway"));
     }
     // water from the terrain classes
     let water = ctx.idx("veg:580600");
@@ -660,26 +674,76 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
         &w,
         &hgt,
         &cls,
-        &crate::roads::Inputs { roads: &roads, rails: &rails, platforms: &platforms, rdedg: &rdedg, rdcompt: &rdcompt, structs: &structs },
+        &crate::roads::Inputs { roads: &roads, rails: &rails, platforms: &platforms, rdedg: &rdedg, rdcompt: &rdcompt, structs: &structs, bldg: &bldg },
     );
-    // runway markings: centre-line dashes, side stripes, threshold bars
+    // a road running through a building (the OSM line a few metres off the
+    // real street, a lane across a corner of the footprint): a building the
+    // road crosses less than a quarter of gives way, so the road goes on; an
+    // open shed (a fuel station or toll gate canopy, a car port) stays as a
+    // roof over the road; a road mostly inside a building (a passage, a
+    // garage) still stops at its walls
+    {
+        let mut size = vec![0u32; table.len() + 1];
+        for &b in &bldg {
+            if b != 0 {
+                size[b as usize] += 1;
+            }
+        }
+        let mut through = vec![0u32; table.len() + 1];
+        for &(_, b) in &net.thru {
+            through[b as usize] += 1;
+        }
+        for &(p, b) in &net.thru {
+            let r = &table[b as usize - 1];
+            if r.roof != R_OPEN && through[b as usize] * 4 < size[b as usize] && bldg[p] == b {
+                bldg[p] = 0;
+                roof[p] = f32::NAN;
+            }
+        }
+    }
+    // runways and taxiways: no road painted across them (airside service roads
+    // mapped over the pavement); runway markings in white (threshold stripes,
+    // touchdown zone, aiming points, centre-line dashes, edge lines; taxiway
+    // markings differ from airport to airport and are left out)
     let mut net = net;
-    for (pts, arc, hw) in &runways {
+    let (rw_cls, tw_cls) = (ctx.idx("osm:aeroway=runway"), ctx.idx("osm:aeroway=taxiway"));
+    if rw_cls > 0 || tw_cls > 0 {
+        for p in 0..n * n {
+            if (lc[p] == rw_cls || lc[p] == tw_cls) && net.road[p] != 0 {
+                net.road[p] = 0;
+                net.roadh[p] = f32::NAN;
+            }
+        }
+    }
+    for (pts, arc, hw, _) in runways.iter().filter(|r| r.3) {
+        let hw = *hw;
         let len = *arc.last().unwrap_or(&0.0);
         for k in 0..pts.len().saturating_sub(1) {
-            crate::roads::segment_pixels(n, pts[k], pts[k + 1], *hw, |p, u, t| {
+            let (ex, ez) = (pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]);
+            let el = ex.hypot(ez).max(1e-9);
+            // a 1 m line of a diagonal runway: its pixels meet side to side
+            let half = 0.5 * (ex.abs() + ez.abs()) / el;
+            crate::roads::segment_pixels(n, pts[k], pts[k + 1], hw, |p, u, t| {
                 // perpendicular projections only (a segment's round cap would
                 // report the distance to its end point, not the lateral offset)
                 if cls[p] == K_OUT || t <= 0.0 || t >= 1.0 {
                     return;
                 }
-                let sa = arc[k] + (arc[k + 1] - arc[k]) * t;
+                if lc[p] != rw_cls {
+                    return;
+                }
                 let au = u.abs();
-                let end = sa < 60.0 || len - sa < 60.0;
-                let mark = (au < 0.5 && sa.rem_euclid(50.0) < 30.0 && !end)
-                    || (au >= hw - 2.0 && au < hw - 1.0)
-                    || (end && (sa < 50.0 || len - sa < 50.0) && (sa < 6.0 || len - sa < 6.0 || au < hw - 4.0 && (au.floor() as i64).rem_euclid(4) < 2));
-                if mark {
+                let sa = arc[k] + (arc[k + 1] - arc[k]) * t;
+                let d = sa.min(len - sa); // from the nearer threshold
+                let bar = |lo: f64, wd: f64| au >= lo && au < lo + wd;
+                let threshold = (6.0..36.0).contains(&d) && au >= 2.0 && au < hw - 3.0 && ((au.floor() as i64 - 2).rem_euclid(4) < 2);
+                let aiming = (400.0..445.0).contains(&d) && bar(9.0, 7.0);
+                let tdz = [(150.0, 3), (300.0, 3), (600.0, 2), (750.0, 2), (900.0, 1)]
+                    .iter()
+                    .any(|&(d0, nb)| d >= d0 && d < d0 + 22.5 && (0..nb).any(|j| bar(9.0 + j as f64 * 3.3, 1.8)) && len >= 2.0 * (d0 + 100.0));
+                let centre = d >= 40.0 && au < half && sa.rem_euclid(50.0) < 30.0;
+                let edge = (au - (hw - 1.0)).abs() < half;
+                if threshold || aiming || tdz || centre || edge {
                     net.road[p] = crate::infra::RD_MARK_WHITE;
                     net.roadh[p] = hgt[p];
                 }
@@ -973,15 +1037,31 @@ pub fn process_tile(ctx: &Ctx, tx: i64, tz: i64) -> Result<TileOut> {
             }
         }
     }
-    let (trees, tcov, nt) = tree_layer(ctx, tx, tz, &busy);
+    let chm2 = crate::chm2::read(&ctx.work, tx, tz);
+    let (trees, tcov, nt) = tree_layer(ctx, tx, tz, &busy, &out.lc, chm2.as_ref());
     out.trees = trees;
     out.tcov = tcov;
     out.ntrees = nt;
-    // the measured canopy surface, so dense crowns close up as in the photo
+    // the measured canopy surface, so dense crowns close up as in the photo;
+    // not along building walls, where the echoes of eaves and wall edges
+    // (split pulses) look like vegetation at the height of the roof
     out.canopy = vec![0u8; t * t];
     if let Some((chm, _)) = &chm_core {
+        let mut near_bldg: Vec<bool> = out.bldg.iter().map(|&b| b != 0).collect();
+        for _ in 0..2 {
+            let prev = near_bldg.clone();
+            near_bldg.par_chunks_mut(t).enumerate().for_each(|(z, row)| {
+                for x in 0..t {
+                    row[x] = prev[z * t + x]
+                        || (x > 0 && prev[z * t + x - 1])
+                        || (x + 1 < t && prev[z * t + x + 1])
+                        || (z > 0 && prev[(z - 1) * t + x])
+                        || (z + 1 < t && prev[(z + 1) * t + x]);
+                }
+            });
+        }
         for p in 0..t * t {
-            if chm[p] >= 20 && !busy[p] {
+            if chm[p] >= 20 && !busy[p] && !near_bldg[p] {
                 out.canopy[p] = chm[p];
             }
         }
@@ -1035,7 +1115,11 @@ fn long_axis_deg(ring: &[[f64; 2]]) -> Option<f64> {
 
 /// Measured trees of a tile: forest-analysis tree points, and tree tops found
 /// in the LiDAR canopy height model (which replaces the points where it exists).
-fn tree_layer(ctx: &Ctx, tx: i64, tz: i64, busy: &[bool]) -> (Vec<u8>, Vec<u8>, usize) {
+/// Also the tree tops of the CHMv2 canopy map (source 3) where nothing better is
+/// measured and the land cover is not a forest stand (towns, fields, parks,
+/// riversides: tcov 4), with trees filling out its closed canopies, and
+/// Tokyo's street trees (source 4).
+fn tree_layer(ctx: &Ctx, tx: i64, tz: i64, busy: &[bool], lc: &[u16], chm2: Option<&(Vec<u8>, Vec<u8>)>) -> (Vec<u8>, Vec<u8>, usize) {
     let t = TILE as usize;
     let mut tcov = vec![0u8; t * t];
     let fp = crate::trees::read_fpts(&ctx.work, tx, tz);
@@ -1072,14 +1156,9 @@ fn tree_layer(ctx: &Ctx, tx: i64, tz: i64, busy: &[bool]) -> (Vec<u8>, Vec<u8>, 
     });
     let mut out: Vec<(u16, u16, u16, u8, u8)> = Vec::new();
     let chm = crate::trees::read_chm(&ctx.work, tx, tz);
-    if let Some((chm, cov)) = &chm {
-        for p in 0..t * t {
-            if cov[p] != 0 {
-                tcov[p] |= 2;
-            }
-        }
-        // buildings, roads, rails (grown by 2 px) are not trees
-        let mut bm: Vec<bool> = busy.to_vec();
+    // buildings, roads, rails (grown by 2 px) are not trees
+    let mut bm: Vec<bool> = busy.to_vec();
+    if chm.is_some() || chm2.is_some() {
         for _ in 0..2 {
             let prev = bm.clone();
             bm.par_chunks_mut(t).enumerate().for_each(|(z, row)| {
@@ -1090,6 +1169,13 @@ fn tree_layer(ctx: &Ctx, tx: i64, tz: i64, busy: &[bool]) -> (Vec<u8>, Vec<u8>, 
                     row[x] = (x > 0 && prev[z * t + x - 1]) || (x + 1 < t && prev[z * t + x + 1]) || (z > 0 && prev[(z - 1) * t + x]) || (z + 1 < t && prev[(z + 1) * t + x]);
                 }
             });
+        }
+    }
+    if let Some((chm, cov)) = &chm {
+        for p in 0..t * t {
+            if cov[p] != 0 {
+                tcov[p] |= 2;
+            }
         }
         // 3×3 mean canopy height (m)
         let mut sm = vec![0f32; t * t];
@@ -1175,12 +1261,145 @@ fn tree_layer(ctx: &Ctx, tx: i64, tz: i64, busy: &[bool]) -> (Vec<u8>, Vec<u8>, 
             .collect();
         out.extend(tops.into_iter().flatten());
     }
+    if let Some((c2, v2)) = chm2 {
+        // the trees of towns, fields, parks and riversides from the canopy map,
+        // where nothing is measured; forest stands keep the land-cover grid (in
+        // steep, shaded forest the map often misses the canopy altogether)
+        let stand: Vec<bool> = std::iter::once(true)
+            .chain(ctx.classes.iter().map(|c| matches!(c.category.as_str(), "forest" | "plantation" | "bamboo" | "orchard" | "tea" | "shrub" | "alpine" | "water")))
+            .collect();
+        for p in 0..t * t {
+            if v2[p] != 0 && tcov[p] == 0 && !stand[lc[p] as usize] {
+                tcov[p] = 4;
+            }
+        }
+        // 3×3 mean of the map (m)
+        let mut sm = vec![0f32; t * t];
+        sm.par_chunks_mut(t).enumerate().for_each(|(z, row)| {
+            for x in 0..t {
+                let (mut s, mut c) = (0u32, 0u32);
+                for dz in -1i64..=1 {
+                    for dx in -1i64..=1 {
+                        let (a, b) = (x as i64 + dx, z as i64 + dz);
+                        if a >= 0 && b >= 0 && (a as usize) < t && (b as usize) < t {
+                            s += c2[b as usize * t + a as usize] as u32;
+                            c += 1;
+                        }
+                    }
+                }
+                row[x] = s as f32 / c as f32;
+            }
+        });
+        let tops: Vec<Vec<(u16, u16, u16, u8, u8)>> = (0..t)
+            .into_par_iter()
+            .map(|z| {
+                let mut v = Vec::new();
+                for x in 0..t {
+                    let p = z * t + x;
+                    let hv = sm[p];
+                    // a mapped canopy of 2 m and more (about 7 m in fact) is a tree: in
+                    // open land 80% of it lies within 3 m of LiDAR canopy (Shizuoka)
+                    if tcov[p] != 4 || hv < 2.0 || bm[p] {
+                        continue;
+                    }
+                    let mut top = 0u8;
+                    for dz in -1i64..=1 {
+                        for dx in -1i64..=1 {
+                            let (a, b) = (x as i64 + dx, z as i64 + dz);
+                            if a >= 0 && b >= 0 && (a as usize) < t && (b as usize) < t {
+                                top = top.max(c2[b as usize * t + a as usize]);
+                            }
+                        }
+                    }
+                    let h = crate::rgen::chm2_height(top);
+                    let r = (1.0 + 0.08 * h).clamp(1.5, 4.0);
+                    let ri = r.ceil() as i64;
+                    let mut is_max = true;
+                    'scan: for dz in -ri..=ri {
+                        for dx in -ri..=ri {
+                            if (dx == 0 && dz == 0) || (dx * dx + dz * dz) as f32 > r * r {
+                                continue;
+                            }
+                            let (a, b) = (x as i64 + dx, z as i64 + dz);
+                            if a < 0 || b < 0 || a as usize >= t || b as usize >= t {
+                                continue;
+                            }
+                            let q = b as usize * t + a as usize;
+                            if sm[q] > hv || (sm[q] == hv && q < p) {
+                                is_max = false;
+                                break 'scan;
+                            }
+                        }
+                    }
+                    if is_max {
+                        v.push((x as u16, z as u16, (h * 10.0).round() as u16, 0, 3));
+                    }
+                }
+                v
+            })
+            .collect();
+        let tops: Vec<(u16, u16, u16, u8, u8)> = tops.into_iter().flatten().collect();
+        // the map smooths a closed canopy into one wide hump with a single top:
+        // fill it out with trees on a jittered 5 m grid, each clear of the
+        // crowns of the tops around it (crown radius as rgen's widest broadleaf)
+        let crown = |h: f32| (0.45 * h).clamp(1.5, 6.0);
+        let mut near: HashMap<(i64, i64), Vec<(i64, i64, f32)>> = HashMap::new();
+        for &(x, z, hh, _, _) in &tops {
+            near.entry((x as i64 / 8, z as i64 / 8)).or_default().push((x as i64, z as i64, crown(hh as f32 / 10.0)));
+        }
+        const CELL: i64 = 5;
+        let (gx0, gz0, gx1, gz1) = (x0.div_euclid(CELL), z0.div_euclid(CELL), (x0 + TILE - 1).div_euclid(CELL), (z0 + TILE - 1).div_euclid(CELL));
+        let fill: Vec<Vec<(u16, u16, u16, u8, u8)>> = (gz0..=gz1)
+            .into_par_iter()
+            .map(|gz| {
+                let mut v = Vec::new();
+                for gx in gx0..=gx1 {
+                    let x = gx * CELL + (crate::rgen::unit(gx, gz, 71) * CELL as f32) as i64 - x0;
+                    let z = gz * CELL + (crate::rgen::unit(gx, gz, 73) * CELL as f32) as i64 - z0;
+                    if x < 0 || z < 0 || x >= TILE || z >= TILE {
+                        continue;
+                    }
+                    let p = z as usize * t + x as usize;
+                    if tcov[p] != 4 || sm[p] < 2.0 || bm[p] {
+                        continue;
+                    }
+                    let mut top = 0u8;
+                    for dz in -1i64..=1 {
+                        for dx in -1i64..=1 {
+                            let (a, b) = (x + dx, z + dz);
+                            if a >= 0 && b >= 0 && a < TILE && b < TILE {
+                                top = top.max(c2[b as usize * t + a as usize]);
+                            }
+                        }
+                    }
+                    let h = crate::rgen::chm2_height(top);
+                    let r = crown(h);
+                    let clear = (x / 8 - 1..=x / 8 + 1).all(|a| {
+                        (z / 8 - 1..=z / 8 + 1).all(|b| near.get(&(a, b)).is_none_or(|q| q.iter().all(|&(qx, qz, qr)| ((qx - x).pow(2) + (qz - z).pow(2)) as f32 > (r.max(qr) + 0.5).powi(2))))
+                    });
+                    if clear {
+                        v.push((x as u16, z as u16, (h * 10.0).round() as u16, crate::trees::SP_FILL, 3));
+                    }
+                }
+                v
+            })
+            .collect();
+        out.extend(tops);
+        out.extend(fill.into_iter().flatten());
+    }
     for &(x, z, hh, s) in &fp {
         let (lx, lz) = ((x - x0) as usize, (z - z0) as usize);
         if chm.as_ref().is_some_and(|(_, cov)| cov[lz * t + lx] != 0) {
             continue;
         }
         out.push((lx as u16, lz as u16, (hh * 10.0).round() as u16, s, 1));
+    }
+    // street trees (Tokyo): where they stand, flagged for the sidewalk rules
+    for &(x, z, h, s) in &ctx.street_trees {
+        let (lx, lz) = (x.floor() as i64 - x0, z.floor() as i64 - z0);
+        if lx >= 0 && lz >= 0 && lx < TILE && lz < TILE {
+            out.push((lx as u16, lz as u16, (h * 10.0).round() as u16, s | crate::trees::SP_STREET, 4));
+        }
     }
     out.sort_unstable();
     let mut b = Vec::with_capacity(out.len() * 8);
@@ -1519,5 +1738,49 @@ fn max_filter(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
             row[x] = tf[x * h + y];
         }
     });
+    out
+}
+
+/// Street trees from the CSV files under `dir` (東京都「都道の街路樹」: 23 区 in
+/// Shift_JIS, 多摩 in UTF-8; columns found by their header): X, Z, height m,
+/// species code.
+fn load_street_trees(dir: &Path, lcc: &Lcc) -> Vec<(f64, f64, f32, u8)> {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(dir) else { return out };
+    let mut files: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("csv"))).collect();
+    files.sort();
+    for f in files {
+        let Ok(raw) = std::fs::read(&f) else { continue };
+        let text = match String::from_utf8(raw.clone()) {
+            Ok(s) => s.trim_start_matches('\u{feff}').to_string(),
+            Err(_) => encoding_rs::SHIFT_JIS.decode(&raw).0.into_owned(),
+        };
+        let mut lines = text.lines();
+        let Some(head) = lines.next() else { continue };
+        let cols: Vec<&str> = head.split(',').map(|c| c.trim().trim_matches('"')).collect();
+        let col = |names: &[&str]| cols.iter().position(|c| names.contains(c));
+        let (Some(ni), Some(hi), Some(oi), Some(ai)) = (col(&["樹種", "name"]), col(&["樹高(m)", "height"]), col(&["経度", "longitude"]), col(&["緯度", "latitude"])) else {
+            eprintln!("features: {}: street-tree columns not found", f.display());
+            continue;
+        };
+        let ki = col(&["区分", "type"]);
+        let mut n = 0;
+        for l in lines {
+            let v: Vec<&str> = l.split(',').map(|c| c.trim().trim_matches('"')).collect();
+            let get = |i: usize| v.get(i).copied().unwrap_or("");
+            let (Ok(lon), Ok(lat)) = (get(oi).parse::<f64>(), get(ai).parse::<f64>()) else { continue };
+            let kind = ki.map(get).unwrap_or("");
+            let h = get(hi).parse::<f32>().ok().filter(|h| *h > 0.3 && *h < 40.0).unwrap_or(match kind {
+                "高木" => 6.0,
+                "中木" => 2.5,
+                "低木" => 1.0,
+                _ => 4.0,
+            });
+            let (x, z) = lcc.ll_to_mc(lat, lon);
+            out.push((x, z, h, crate::trees::street_species(get(ni))));
+            n += 1;
+        }
+        eprintln!("features: {} street trees from {}", n, f.display());
+    }
     out
 }

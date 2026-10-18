@@ -1,4 +1,5 @@
 mod area;
+mod audit;
 mod features;
 mod rgen;
 mod roads;
@@ -10,10 +11,12 @@ mod landcover;
 mod lulc;
 mod osm;
 mod osmfind;
+mod profile;
 mod network;
 mod plateau;
 mod bathy;
 mod blocks;
+mod chm2;
 mod chunk;
 mod infra;
 mod light;
@@ -264,6 +267,10 @@ fn main() -> Result<()> {
             };
             osmfind::run(&pbfs, &names)?;
         }
+        "chm2" => {
+            // chm2 [--data E:\data] : Meta/WRI CHMv2 canopy heights (data\CHMv2\chm\*.tif) -> work\trees\chm2_*.tif, chm2cov_*.tif
+            chm2::ingest(&o.path("data", DEFAULT_DATA).join("CHMv2"), &o.path("work", DEFAULT_WORK), &o.path("heightmap", DEFAULT_HEIGHTMAP))?
+        }
         "network" => network::run(&o.path("work", DEFAULT_WORK), &o.path("heightmap", DEFAULT_HEIGHTMAP))?,
         "vegmap" => {
             let work = o.path("work", DEFAULT_WORK);
@@ -359,6 +366,52 @@ fn main() -> Result<()> {
             eprintln!("base files written to {}", world_dir.display());
         }
         "verify" => verify::cmd(&args[2..])?,
+        "audit" => {
+            // audit [--regions "rx,rz;..." | --around "X,Z,R" | --sample N] [--out FILE.tsv]
+            let hm = o.path("heightmap", DEFAULT_HEIGHTMAP);
+            let work = o.path("work", DEFAULT_WORK);
+            let mut regions: Vec<(i64, i64)> = Vec::new();
+            if let Some(s) = o.kv.get("regions") {
+                for p in s.split(';') {
+                    let v: Vec<i64> = p.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                    if v.len() == 2 {
+                        regions.push((v[0], v[1]));
+                    }
+                }
+            }
+            if let Some(a) = o.kv.get("around") {
+                let v: Vec<i64> = a.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                let (x, z, r) = (v[0], v[1], v[2]);
+                for rz in (z - r).div_euclid(512)..=(z + r).div_euclid(512) {
+                    for rx in (x - r).div_euclid(512)..=(x + r).div_euclid(512) {
+                        regions.push((rx, rz));
+                    }
+                }
+            }
+            if let Some(k) = o.kv.get("sample").and_then(|s| s.parse::<u32>().ok()) {
+                // every k-th region of the heightmap tiles (spread by a hash)
+                for e in std::fs::read_dir(&hm)? {
+                    let name = e?.file_name().to_string_lossy().to_string();
+                    if let Some(rest) = name.strip_prefix("height_X").and_then(|s| s.strip_suffix(".tif")) {
+                        let (xs, zs) = rest.split_once("_Z").context("tile name")?;
+                        let (x, z): (i64, i64) = (xs.parse()?, zs.parse()?);
+                        for j in 0..heightmap::TILE / 512 {
+                            for i in 0..heightmap::TILE / 512 {
+                                let (rx, rz) = (x / 512 + i, z / 512 + j);
+                                if rgen::hash3(rx, rz, 4242) % k == 0 {
+                                    regions.push((rx, rz));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            regions.sort();
+            regions.dedup();
+            let legend = landcover::read_veg_legend(&work.join("veg_legend.csv"))?;
+            let classes = landcover::classes(&o.path("lcmap", DEFAULT_LCMAP), &legend)?;
+            audit::run(&hm, &o.path("features", DEFAULT_FEATURES), &work, &rgen::SpecTable::new(&classes), &regions, &o.path("out", "audit.tsv"))?;
+        }
         "hmprobe" => {
             // hmprobe X Z : value of the heightmap at a Minecraft column
             let out = o.path("out", DEFAULT_HEIGHTMAP);
@@ -466,6 +519,13 @@ fn main() -> Result<()> {
                     let p0 = f.parts[0][0];
                     let zr = f.zs.first().filter(|z| !z.is_empty()).map(|z| format!(" z[{:.1}..{:.1}] ends {:.1},{:.1}", z.iter().cloned().fold(f32::MAX, f32::min), z.iter().cloned().fold(f32::MIN, f32::max), z[0], z[z.len() - 1])).unwrap_or_default();
                     println!("id={} class={} flags={} nums={:?} area={} pts={} zs={}{zr} at=({:.0},{:.0}) text={}", f.id, f.class, f.flags, f.nums, f.area, n, f.zs.len(), p0[0], p0[1], f.text);
+                    if o.kv.contains_key("pts") {
+                        // every vertex (with its profile height, if any)
+                        for (k, p) in f.parts[0].iter().enumerate() {
+                            let z = f.zs.first().and_then(|z| z.get(k)).map(|v| format!(" {v:.2}")).unwrap_or_default();
+                            println!("    {:.1},{:.1}{z}", p[0], p[1]);
+                        }
+                    }
                 }
             }
         }
@@ -498,13 +558,15 @@ fn main() -> Result<()> {
                  \x20 osm        [PBF ...] [--work ...]                     OSM roads/rails/land use -> vec_osm_*.bin\n\
                  \x20 network    [--work ...] [--heightmap ...]             bridge/tunnel profiles -> vec_net_struct.bin\n\
                  \x20 trees      [--forest DIR] [--las DIR] [--no-forest] [--no-las]  Shizuoka tree points / LiDAR canopy -> trees\\\n\
+                 \x20 chm2       [--data E:\\data] [--work ...] [--heightmap ...]  Meta/WRI CHMv2 canopy heights (data\\CHMv2\\chm) -> trees\\chm2_*.tif\n\
                  \x20 lcmap      [--lcmap config\\landcover_map.csv]         create/refresh the land-cover mapping table\n\
                  \x20 features   [--out E:\\data\\features] [--tiles \"X,Z;...\"] [--concurrency 5]\n\
                  \x20 world      [--heightmap ...] [--features ...] [--world C:\\mc1m_world\\japan_dem_1m] [--force] [--level 6] [--around \"X,Z,R\"] [--regions \"rx,rz;...\"]\n\
                  \n\
                  checks:\n\
                  \x20 hmprobe X Z | proj LAT LON | proj tm EAST NORTH | probe LAT LON | codestats | nbtdump FILE | chunkdump REGION.mca LX LZ\n\
-                 \x20 vdump VEC.bin X Z R | fgrid LAYER X Z W H\n\
+                 \x20 vdump VEC.bin X Z R [--pts] | fgrid LAYER X Z W H\n\
+                 \x20 audit [--regions \"rx,rz;...\" | --around \"X,Z,R\" | --sample N] [--out audit.tsv]  roads/bridges/tunnels/buildings/trees, no files written\n\
                  \x20 verify striplight|lightcmp|blockcmp|column|render|featrender ..."
             );
             std::process::exit(2);

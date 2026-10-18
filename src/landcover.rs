@@ -288,7 +288,7 @@ pub fn osm_defaults() -> Vec<Spec> {
         spec("osm:building=greenhouse", "温室 (OSM)", "greenhouse", "grass_block", "greenhouse", "", 0.0, "", "", "minecraft:plains"),
         spec("osm:plant:source=solar", "太陽光発電所 (OSM)", "solar", "gravel", "solar", "", 0.0, "", "", "minecraft:plains"),
         spec("osm:generator:source=solar", "太陽光パネル (OSM)", "solar", "gravel", "solar", "", 0.0, "", "", "minecraft:plains"),
-        spec("osm:aeroway=runway", "滑走路 (OSM)", "airport", "black_concrete", "runway", "", 0.0, "", "", "minecraft:plains"),
+        spec("osm:aeroway=runway", "滑走路 (OSM)", "airport", "gray_concrete", "runway", "", 0.0, "", "", "minecraft:plains"),
         spec("osm:aeroway=taxiway", "誘導路 (OSM)", "airport", "gray_concrete", "apron", "", 0.0, "", "", "minecraft:plains"),
         spec("osm:aeroway=apron", "エプロン (OSM)", "airport", "light_gray_concrete", "apron", "", 0.0, "", "", "minecraft:plains"),
         spec("osm:aeroway=helipad", "ヘリパッド (OSM)", "airport", "light_gray_concrete", "apron", "", 0.0, "", "", "minecraft:plains"),

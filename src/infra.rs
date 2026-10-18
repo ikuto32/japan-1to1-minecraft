@@ -113,6 +113,12 @@ fn set_surface(c: &mut Col, ov: &mut Overlay, i: usize, surf: f32, full: BlockId
     let q = (surf * 2.0).round() / 2.0;
     let half = q.fract().abs() > 0.25 && slab.is_some();
     let top_full = if half { q.floor() as i32 - 1 } else { q.round() as i32 - 1 };
+    // a surface laid before (a ground road under a bridge end or a tunnel
+    // mouth) leaves its slab or hedge one block over its top: it must not
+    // float over a lowered surface or cut into a raised one
+    let old = c.top_y();
+    let (lo, hi) = (top_full.min(old) + 1, top_full.max(old) + 1);
+    ov.v[i].retain(|e| e.0 < lo || e.0 > hi);
     c.g = top_full;
     c.w = top_full;
     c.top = full;
@@ -158,6 +164,25 @@ pub struct Decks {
     pub bottom: Vec<i32>,
     /// a railway deck passes over the column
     pub rail: Vec<bool>,
+    /// walking surfaces drawn: (window index, 2 × surface Y, S_* kind, road code; 0 for rails)
+    pub surf: Vec<(u32, i32, u8, u8)>,
+}
+
+// kinds of drawn surfaces (Decks::surf)
+pub const S_GROUND: u8 = 1;
+pub const S_DECK: u8 = 2;
+pub const S_EDGE: u8 = 3; // deck edge under a parapet
+pub const S_EMBANK: u8 = 4;
+pub const S_TUNNEL: u8 = 5;
+pub const S_PORTAL: u8 = 6; // open cut at a tunnel mouth
+pub const S_TUNNEL_WALL: u8 = 7; // tunnel floor under the lining
+pub const S_RAIL: u8 = 8; // rail blocks (on the ground, a deck or in a tunnel)
+
+/// 2 × the walking surface of a column whose top full block is `g`, with a
+/// bottom slab on it or not.
+#[inline]
+fn surf2(g: i32, slab: bool) -> i32 {
+    2 * g + if slab { 3 } else { 2 }
 }
 
 /// Returns the decks over each column, so buildings stay under viaducts and
@@ -203,10 +228,13 @@ pub fn apply(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat]) -> 
         }
     }
     // ---- ground roads
+    let mut surfs: Vec<(u32, i32, u8, u8)> = Vec::new();
     let mut track: HashMap<usize, Vec<i32>> = HashMap::new(); // pixel -> rail block Y(s)
     for i in 0..n * n {
         let code = fx.road[i];
-        if code == 0 || cols[i].out || !fx.roadh[i].is_finite() || cols[i].flags & CF_BLDG != 0 || fx.bldg[i] != 0 {
+        // not inside a building (an open shed is a roof over the road)
+        let in_bldg = fx.bldg[i] != 0 && fx.bld[fx.bldg[i] as usize].roof != crate::features::R_OPEN;
+        if code == 0 || cols[i].out || !fx.roadh[i].is_finite() || cols[i].flags & CF_BLDG != 0 || in_bldg {
             continue;
         }
         let surf = SEA_Y as f32 + fx.roadh[i] + 1.0;
@@ -221,6 +249,7 @@ pub fn apply(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat]) -> 
                 ov.put(i, c.g + 1, b("azalea_leaves[distance=1,persistent=true,waterlogged=false]"));
             }
         }
+        surfs.push((i as u32, surf2(c.g, slab_y.is_some()), S_GROUND, code));
         cols[i] = c;
     }
     // ---- ground rails and platforms
@@ -268,7 +297,54 @@ pub fn apply(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat]) -> 
         }
     }
     // ---- bridges, elevated embankments and tunnels
-    let decks = structures(g, cols, ov, structs, &mut track);
+    let mut decks = structures(g, cols, ov, structs, &mut track, &mut surfs);
+    decks.surf = surfs;
+    // the canopy over a platform stands on pillars along its middle line: in
+    // every 7 m cell, the middle-line pixel with the lowest hash (pillars
+    // stand apart on a platform of any direction, the same in every window)
+    let mut pdist = vec![0u8; n * n];
+    {
+        let mut q = std::collections::VecDeque::new();
+        for i in 0..n * n {
+            if fx.rail[i] == RAIL_PLATFORM {
+                let (x, z) = (i % n, i / n);
+                let edge = x == 0 || z == 0 || x + 1 == n || z + 1 == n || [i - 1, i + 1, i - n, i + n].iter().any(|&j| fx.rail[j] != RAIL_PLATFORM);
+                if edge {
+                    pdist[i] = 1;
+                    q.push_back(i);
+                }
+            }
+        }
+        while let Some(i) = q.pop_front() {
+            let (x, z) = (i % n, i / n);
+            if pdist[i] >= 20 || x == 0 || z == 0 || x + 1 == n || z + 1 == n {
+                continue;
+            }
+            for j in [i - 1, i + 1, i - n, i + n] {
+                if fx.rail[j] == RAIL_PLATFORM && pdist[j] == 0 {
+                    pdist[j] = pdist[i] + 1;
+                    q.push_back(j);
+                }
+            }
+        }
+    }
+    let mut pillar_at: HashMap<(i64, i64), (u32, usize)> = HashMap::new();
+    for i in 0..n * n {
+        let (x, z) = (i % n, i / n);
+        if pdist[i] < 3 || x == 0 || z == 0 || x + 1 == n || z + 1 == n {
+            continue;
+        }
+        if [i - 1, i + 1, i - n, i + n].iter().any(|&j| pdist[j] > pdist[i]) {
+            continue; // not on the middle line
+        }
+        let (wx, wz) = (g.ox + x as i64, g.oz + z as i64);
+        let h = crate::rgen::hash3(wx, wz, 11);
+        let e = pillar_at.entry((wx.div_euclid(7), wz.div_euclid(7))).or_insert((u32::MAX, i));
+        if h < e.0 {
+            *e = (h, i);
+        }
+    }
+    let pillars: std::collections::HashSet<usize> = pillar_at.values().map(|v| v.1).collect();
     // platform edges next to the tracks get the yellow tactile strip
     for i in 0..n * n {
         if fx.rail[i] != RAIL_PLATFORM || cols[i].out {
@@ -294,17 +370,10 @@ pub fn apply(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat]) -> 
             } else {
                 cols[i].top = ids.yellow_concrete;
             }
-        } else {
-            // canopy over the platform, on pillars along its middle
-            let interior = [(-2i64, 0i64), (2, 0), (0, -2), (0, 2)].iter().all(|&(dx, dz)| {
-                let (xx, zz) = (x as i64 + dx, z as i64 + dz);
-                xx >= 0 && zz >= 0 && (xx as usize) < n && (zz as usize) < n && fx.rail[zz as usize * n + xx as usize] == RAIL_PLATFORM
-            });
-            let (wx, wz) = (g.ox + x as i64, g.oz + z as i64);
-            if interior && (wx + wz).rem_euclid(10) == 0 {
-                for y in yb + 2..yb + 6 {
-                    ov.put(i, y, b("light_gray_concrete"));
-                }
+        } else if pillars.contains(&i) && decks.bottom[i] == i32::MAX {
+            // canopy pillar on the platform's middle line (none under a footbridge)
+            for y in yb + 2..yb + 6 {
+                ov.put(i, y, b("light_gray_concrete"));
             }
         }
         ov.put(i, yb + 6, b("smooth_stone_slab[type=bottom,waterlogged=false]"));
@@ -340,6 +409,7 @@ pub fn apply(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat]) -> 
     }
     for (i, y, shape) in rails {
         ov.put(i, y, b(&format!("rail[shape={shape},waterlogged=false]")));
+        decks.surf.push((i as u32, 2 * y, S_RAIL, 0));
         // the column itself is railway only where the track lies on the ground
         if y <= cols[i].top_y() + 2 {
             cols[i].flags |= CF_RAIL | CF_NO_TREE | CF_NO_PLANT;
@@ -363,6 +433,8 @@ struct SWay<'a> {
     spacing: f64,
     full: BlockId,
     slab: Option<BlockId>,
+    /// road surface code (0 for rails)
+    code: u8,
 }
 
 /// One deck (or tunnel floor) over a pixel: the ways overlapping there at
@@ -381,7 +453,7 @@ struct Deck {
 /// sidewalks, single tracks) that overlap at about the same height form one
 /// deck: parapets only on its outer edge, piers on a grid shared by the
 /// parallel ways. Returns the lowest deck underside per column.
-fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], track: &mut HashMap<usize, Vec<i32>>) -> Decks {
+fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], track: &mut HashMap<usize, Vec<i32>>, surfs: &mut Vec<(u32, i32, u8, u8)>) -> Decks {
     let ids = Ids::get();
     let n = g.n;
     let concrete = ids.light_gray_concrete;
@@ -415,8 +487,9 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
             } else {
                 road_width(f.class, f.nums, &f.text) + 1.0
             };
-            let (full, slab) = if rail { (if hs { ids.smooth_stone } else { ids.gravel }, None) } else { road_blocks(road_code(f.class, &f.text)) };
-            Some(SWay { pts, zs, rail, mode, hw: width / 2.0, tracks, spacing, full, slab })
+            let code = if rail { 0 } else { road_code(f.class, &f.text) };
+            let (full, slab) = if rail { (if hs { ids.smooth_stone } else { ids.gravel }, None) } else { road_blocks(code) };
+            Some(SWay { pts, zs, rail, mode, hw: width / 2.0, tracks, spacing, full, slab, code })
         })
         .collect();
     // nearest point of each way per pixel: (pixel, way, distance, height, axis)
@@ -465,6 +538,7 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
         while j < cands.len() && cands[j].0 as usize == p {
             j += 1;
         }
+        let mut groups: Vec<(bool, usize)> = Vec::new(); // (up, representative candidate)
         let mut k = i;
         while k < j {
             let up = up_of(cands[k].1);
@@ -476,10 +550,33 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
                 }
                 m += 1;
             }
+            // decks cannot be stacked closer than a storey: where two overlap
+            // less than 4.5 m apart (ramps diverging side by side, the edges of
+            // parallel decks at other heights) the pixel belongs to the deck
+            // whose centre line is nearer; only the outer half of a deck gives
+            // way (never the middle of a road), and never a railway deck (its
+            // track would break)
+            let may_drop = |c: usize| {
+                let w = &ways[cands[c].1 as usize];
+                !w.rail && cands[c].2 >= 0.5 * w.hw
+            };
+            match groups.last_mut() {
+                Some(last) if up && last.0 && cands[rep].3 - cands[last.1].3 < 4.5 => {
+                    let nearer = cands[rep].2 < cands[last.1].2;
+                    if nearer && may_drop(last.1) {
+                        last.1 = rep;
+                    } else if nearer || !may_drop(rep) {
+                        groups.push((up, rep));
+                    }
+                }
+                _ => groups.push((up, rep)),
+            }
+            k = m;
+        }
+        for (up, rep) in groups {
             let c = cands[rep];
             decks.push(Deck { h: c.3, way: c.1, d: c.2, axis: c.4, up, next: first[p] });
             first[p] = (decks.len() - 1) as u32;
-            k = m;
         }
         i = j;
     }
@@ -544,6 +641,37 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
         })
     };
     let lining = b("stone_bricks");
+    // a tunnel needs its height and a block of ground over its lining: where the
+    // terrain is lower (the approach to a portal) the way runs in an open cut
+    // instead of a tunnel too low to pass; under another road, a railway or a
+    // building only a portal at the surface is cut
+    let tunnel_h = |w: &SWay| -> i32 { if w.rail { 7 } else if w.hw >= 3.0 { 6 } else { 4 } };
+    let mut tcut = vec![false; decks.len()];
+    for p in 0..n * n {
+        let c = &cols[p];
+        let mut di = first[p];
+        while di != u32::MAX {
+            let d = &decks[di as usize];
+            if !d.up && !c.out && c.flags & CF_WATER == 0 {
+                let deck = SEA_Y + d.h.round() as i32;
+                let natural = c.flags & (CF_ROAD | CF_RAIL | CF_BLDG | CF_STRUCT) == 0 && g.fx.bldg[p] == 0;
+                let top = c.top_y();
+                tcut[di as usize] = top < deck + 2 || (natural && top < deck + tunnel_h(&ways[d.way as usize]) + 2);
+            }
+            di = d.next;
+        }
+    }
+    let cut_at = |q: usize, h: f32| -> bool {
+        let mut di = first[q];
+        while di != u32::MAX {
+            let d = &decks[di as usize];
+            if !d.up && (d.h - h).abs() <= 1.2 && tcut[di as usize] {
+                return true;
+            }
+            di = d.next;
+        }
+        false
+    };
     let mut deck_y = vec![i32::MIN; decks.len()]; // Y of the block rails stand on
     for p in 0..n * n {
         if first[p] == u32::MAX || cols[p].out {
@@ -566,7 +694,18 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
             if dk.up {
                 let first_up = lowest_up;
                 lowest_up = false;
-                if w.mode == M_EMBANK || (first_up && deck <= cols[p].top_y() + 1) {
+                // the end of a bridge within three blocks of a ground road under it
+                // raises that road to it rather than lying on it: a road bridge over
+                // a sidewalk or a lane beside it, the stairs of a footbridge over the
+                // sidewalk they land on (a footbridge over a carriageway, a railway
+                // over a road cross them)
+                let car = |c: u8| matches!(c, RD_MOTORWAY | RD_NATIONAL | RD_PREF | RD_GENERAL | RD_NARROW | RD_TRACK);
+                let ground_code = g.fx.road[p];
+                let low_over_road = !w.rail
+                    && cols[p].flags & CF_ROAD != 0
+                    && deck <= cols[p].top_y() + 3
+                    && (car(w.code) || !(car(ground_code) || matches!(ground_code, RD_MARK_WHITE | RD_MARK_YELLOW | RD_MEDIAN)));
+                if w.mode == M_EMBANK || (first_up && (deck <= cols[p].top_y() + 1 || low_over_road)) {
                     // an embankment, or where the deck meets the ground: a raised ground surface
                     if !first_up && deck <= cols[p].top_y() {
                         continue;
@@ -574,8 +713,12 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
                     let mut c = cols[p];
                     let sy = set_surface(&mut c, ov, p, surf, w.full, slab, ids);
                     c.flags |= if w.rail { CF_RAIL } else { CF_ROAD } | CF_NO_TREE | CF_NO_PLANT;
-                    if w.mode == M_EMBANK && edge(p, &dk) {
+                    let wall = w.mode == M_EMBANK && edge(p, &dk);
+                    if wall {
                         ov.put(p, sy.unwrap_or(c.g) + 1, concrete);
+                    }
+                    if !w.rail {
+                        surfs.push((p as u32, surf2(c.g, sy.is_some()), if wall { S_EDGE } else if w.mode == M_EMBANK { S_EMBANK } else { S_DECK }, w.code));
                     }
                     cols[p] = c;
                     deck_y[di as usize] = c.g + 1;
@@ -583,22 +726,22 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
                 }
                 cols[p].flags |= CF_NO_TREE;
                 // road decks are quantized to half blocks (walkable grades); rail beds stay full blocks
-                let (top_y, walk_y) = match slab {
+                let (top_y, walk_y, y2) = match slab {
                     Some(sb) => {
                         let q = (surf * 2.0).round() / 2.0;
                         if q.fract().abs() > 0.25 {
                             let y = q.floor() as i32;
                             ov.put(p, y, sb);
-                            (y, y + 1)
+                            (y, y + 1, 2 * y + 1)
                         } else {
                             let y = q.round() as i32 - 1;
                             ov.put(p, y, w.full);
-                            (y, y + 1)
+                            (y, y + 1, 2 * y + 2)
                         }
                     }
                     None => {
                         ov.put(p, deck, w.full);
-                        (deck, deck + 1)
+                        (deck, deck + 1, 2 * deck + 2)
                     }
                 };
                 // girder: one block, two on high viaducts
@@ -610,21 +753,67 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
                 }
                 deck_bottom[p] = deck_bottom[p].min(top_y - girder);
                 deck_rail[p] |= w.rail;
-                if edge(p, &dk) {
+                let wall = edge(p, &dk);
+                if wall {
                     // parapet on a full block (a slab edge would leave a gap under it)
                     ov.put(p, top_y, concrete);
                     ov.put(p, walk_y, concrete);
                 }
+                if !w.rail {
+                    surfs.push((p as u32, y2, if wall { S_EDGE } else { S_DECK }, w.code));
+                }
                 deck_y[di as usize] = deck + 1;
-                // piers on a grid shared by parallel ways, standing on the ground (also through water)
+                // piers on a grid shared by parallel ways, standing on the ground (also
+                // through water); one that would stand on a carriageway under the
+                // bridge moves across the deck to a median strip or a sidewalk (the
+                // middle of the road where there is none), never onto a railway
                 if w.mode == M_BRIDGE && dk.d < 1.0 {
                     let (wx, wz) = (g.ox + (p % n) as i64, g.oz + (p / n) as i64);
                     let along = if dk.axis == 0 { wx } else { wz };
                     let pitch = if w.rail { 20 } else { 30 };
                     if along.rem_euclid(pitch) < 2 {
-                        for y in cols[p].g + 1..top_y - girder {
-                            if ov.get(p, y).is_none() {
-                                ov.put(p, y, concrete);
+                        let free = |q: usize| -> bool {
+                            let c = &cols[q];
+                            !c.out && c.flags & CF_RAIL == 0 && (c.flags & CF_ROAD == 0 || matches!(g.fx.road[q], 0 | RD_MEDIAN | RD_SIDEWALK | RD_PEDESTRIAN))
+                        };
+                        let (x, z) = ((p % n) as i64, (p / n) as i64);
+                        let mut at = None;
+                        for k in 0..=(w.hw.floor() as i64) {
+                            for s in if k == 0 { [0i64, 0] } else { [k, -k] } {
+                                let (xx, zz) = if dk.axis == 0 { (x, z + s) } else { (x + s, z) };
+                                if at.is_none() && xx >= 0 && zz >= 0 && xx < n as i64 && zz < n as i64 && free(zz as usize * n + xx as usize) {
+                                    at = Some(zz as usize * n + xx as usize);
+                                }
+                            }
+                        }
+                        // else along the deck, off a road crossing under it (its own deck there)
+                        if at.is_none() {
+                            for k in 1..=8i64 {
+                                for s in [k, -k] {
+                                    let (xx, zz) = if dk.axis == 0 { (x + s, z) } else { (x, z + s) };
+                                    if at.is_some() || xx < 0 || zz < 0 || xx >= n as i64 || zz >= n as i64 {
+                                        continue;
+                                    }
+                                    let q = zz as usize * n + xx as usize;
+                                    let mut dj = first[q];
+                                    let mut on_deck = false;
+                                    while dj != u32::MAX {
+                                        let e = &decks[dj as usize];
+                                        on_deck |= e.up && (e.h - dk.h).abs() <= 2.0;
+                                        dj = e.next;
+                                    }
+                                    if on_deck && free(q) {
+                                        at = Some(q);
+                                    }
+                                }
+                            }
+                        }
+                        let at = at.or_else(|| (cols[p].flags & CF_RAIL == 0).then_some(p));
+                        if let Some(q) = at {
+                            for y in cols[q].g + 1..top_y - girder {
+                                if ov.get(q, y).is_none() {
+                                    ov.put(q, y, concrete);
+                                }
                             }
                         }
                     }
@@ -635,36 +824,42 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
                 if c.flags & CF_WATER != 0 {
                     continue; // under the sea / a river: nothing visible, never a causeway
                 }
-                if c.top_y() < deck + 2 {
+                if tcut[di as usize] {
                     // portal / open cut: a ground road
                     let mut cc = c;
-                    set_surface(&mut cc, ov, p, surf, w.full, slab, ids);
+                    let sy = set_surface(&mut cc, ov, p, surf, w.full, slab, ids);
                     cc.flags |= if w.rail { CF_RAIL } else { CF_ROAD } | CF_NO_TREE | CF_NO_PLANT;
+                    if !w.rail {
+                        surfs.push((p as u32, surf2(cc.g, sy.is_some()), S_PORTAL, w.code));
+                    }
                     cols[p] = cc;
                     deck_y[di as usize] = cc.g + 1;
                     continue;
                 }
-                let hgt = if w.rail { 7 } else if w.hw >= 3.0 { 6 } else { 4 };
-                let floor_y = match slab {
+                let hgt = tunnel_h(w);
+                let (floor_y, y2) = match slab {
                     Some(sb) => {
                         let q = (surf * 2.0).round() / 2.0;
                         if q.fract().abs() > 0.25 {
                             let y = q.floor() as i32;
                             ov.put(p, y, sb);
                             ov.put(p, y - 1, w.full);
-                            y
+                            (y, 2 * y + 1)
                         } else {
                             let y = q.round() as i32 - 1;
                             ov.put(p, y, w.full);
-                            y
+                            (y, 2 * y + 2)
                         }
                     }
                     None => {
                         ov.put(p, deck, w.full);
-                        deck
+                        (deck, 2 * deck + 2)
                     }
                 };
                 let wall = edge(p, &dk);
+                if !w.rail {
+                    surfs.push((p as u32, y2, if wall { S_TUNNEL_WALL } else { S_TUNNEL }, w.code));
+                }
                 // keep the top ground block (and so any water above it) intact
                 let mut ceil = floor_y + hgt + 1;
                 for y in floor_y + 1..=floor_y + hgt {
@@ -677,7 +872,113 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
                 if ceil <= c.g {
                     ov.put(p, ceil, lining);
                 }
+                // the portal: a lined head wall over the mouth, facing the open cut
+                let (x, z) = ((p % n) as i64, (p / n) as i64);
+                let face = [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)].iter().any(|&(dx, dz)| {
+                    let (xx, zz) = (x + dx, z + dz);
+                    xx >= 0 && zz >= 0 && xx < n as i64 && zz < n as i64 && cut_at(zz as usize * n + xx as usize, dk.h)
+                });
+                if face && c.flags & (CF_ROAD | CF_RAIL | CF_BLDG | CF_STRUCT) == 0 {
+                    for y in ceil + 1..=(ceil + 3).min(c.g) {
+                        ov.put(p, y, lining);
+                    }
+                }
                 deck_y[di as usize] = deck + 1;
+            }
+        }
+    }
+    // covered cuttings: where a mapped tunnel runs in an open cut (a cut and
+    // cover tunnel, the Gaikan expressway in Nerima: the elevation model has the
+    // cutting but not its roof), the roof comes back as a concrete lid level
+    // with the bank of the cutting (the lower one, where both are in reach),
+    // over the tunnel and across to that bank, where it clears the way by the
+    // height of a tunnel; the side of a cutting shared with an open roadway
+    // (a half-covered cutting) stays open past the tunnel's own width
+    {
+        const REACH: i64 = 16;
+        let lid = ids.light_gray_concrete;
+        let mut lid_at: HashMap<usize, i32> = HashMap::new();
+        for p in 0..n * n {
+            if cols[p].out || cols[p].flags & CF_WATER != 0 {
+                continue;
+            }
+            let mut di = first[p];
+            while di != u32::MAX {
+                let dk = decks[di as usize];
+                let cut = !dk.up && tcut[di as usize];
+                di = dk.next;
+                if !cut {
+                    continue;
+                }
+                let w = &ways[dk.way as usize];
+                let floor = cols[p].top_y();
+                let lowest = floor + tunnel_h(w) + 1; // the lowest block the lid may have
+                let (x, z) = ((p % n) as i64, (p / n) as i64);
+                let (sx, sz) = if dk.axis == 0 { (0i64, 1i64) } else { (1, 0) };
+                let mut bank = [i32::MAX; 2];
+                let mut spans: [Vec<usize>; 2] = [Vec::new(), Vec::new()];
+                for (side, sgn) in [-1i64, 1].into_iter().enumerate() {
+                    for k in 1..=REACH {
+                        let (xx, zz) = (x + sx * sgn * k, z + sz * sgn * k);
+                        if xx < 0 || zz < 0 || xx >= n as i64 || zz >= n as i64 {
+                            break;
+                        }
+                        let q = zz as usize * n + xx as usize;
+                        if cols[q].out {
+                            break;
+                        }
+                        if top0[q] >= lowest {
+                            bank[side] = top0[q];
+                            break;
+                        }
+                        spans[side].push(q);
+                    }
+                }
+                let ly = bank[0].min(bank[1]);
+                if ly == i32::MAX {
+                    continue; // no bank in reach: an open cut among open roadways
+                }
+                let [s0, s1] = spans;
+                let span = std::iter::once(p).chain(if bank[0] != i32::MAX { s0 } else { Vec::new() }).chain(if bank[1] != i32::MAX { s1 } else { Vec::new() });
+                for q in span {
+                    let e = lid_at.entry(q).or_insert(ly);
+                    *e = (*e).min(ly);
+                }
+            }
+        }
+        // the first air block over each walking surface drawn so far
+        let mut air: HashMap<u32, i32> = HashMap::new();
+        for &(i, y2, _, _) in surfs.iter() {
+            let e = air.entry(i).or_insert(i32::MIN);
+            *e = (*e).max((y2 + 1).div_euclid(2));
+        }
+        for (q, ly) in lid_at {
+            let c = cols[q];
+            // not over a road or a railway of its own (one crossing the cutting
+            // on the ground), into a building, a bridge deck or the bank itself
+            let own = {
+                let mut di = first[q];
+                let mut f = false;
+                while di != u32::MAX {
+                    let d = decks[di as usize];
+                    f |= !d.up && tcut[di as usize];
+                    di = d.next;
+                }
+                f
+            };
+            if (!own && c.flags & (CF_ROAD | CF_RAIL) != 0) || c.flags & (CF_BLDG | CF_STRUCT) != 0 && !own || deck_bottom[q] <= ly + 1 || c.top_y() >= ly {
+                continue;
+            }
+            // four blocks of headroom over a road, seven over the tracks
+            let low = match air.get(&(q as u32)) {
+                Some(&a) => a + 4,
+                None if c.flags & CF_RAIL != 0 => c.top_y() + 8,
+                None => c.top_y() + 1,
+            };
+            for y in [ly, ly - 1] {
+                if y >= low && ov.get(q, y).is_none() {
+                    ov.put(q, y, lid);
+                }
             }
         }
     }
@@ -710,5 +1011,5 @@ fn structures(g: &Gen, cols: &mut [Col], ov: &mut Overlay, structs: &[VFeat], tr
             });
         }
     }
-    Decks { bottom: deck_bottom, rail: deck_rail }
+    Decks { bottom: deck_bottom, rail: deck_rail, surf: Vec::new() }
 }

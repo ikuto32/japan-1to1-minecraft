@@ -19,7 +19,8 @@ use crate::infra::{
 };
 use crate::osm::{F_AREA, F_BRIDGE, F_EMBANKMENT, F_HIGHSPEED, F_ONEWAY, F_SERVICE, F_TUNNEL};
 use crate::vfeat::VFeat;
-use std::collections::VecDeque;
+use rayon::prelude::*;
+use std::collections::{HashMap, VecDeque};
 
 pub struct Net {
     pub road: Vec<u8>,
@@ -30,6 +31,24 @@ pub struct Net {
     pub rdir: Vec<u8>,
     /// road ways, road points with a measured width, rail ways, platforms
     pub stats: [usize; 4],
+    /// vehicle road pixels painted inside a building footprint (pixel, building)
+    pub thru: Vec<(usize, u32)>,
+}
+
+/// A ground road line before painting: points, widths and raw heights.
+struct RLine {
+    pts: Vec<[f64; 2]>,
+    s: Vec<f64>,
+    vidx: Vec<usize>,
+    wl: Vec<f32>,
+    wr: Vec<f32>,
+    sl: Vec<f32>,
+    sr: Vec<f32>,
+    ml: Vec<f32>,
+    mr: Vec<f32>,
+    raw: Vec<f32>,
+    water: Vec<f32>,
+    edges: usize,
 }
 
 // ray-cast targets
@@ -191,64 +210,6 @@ pub fn normals(p: &[[f64; 2]]) -> Vec<([f64; 2], [f64; 2])> {
         .collect()
 }
 
-/// Moving average over an arc-length window ±r, ignoring NaN.
-fn smooth(v: &[f32], s: &[f64], r: f64) -> Vec<f32> {
-    if r <= 0.0 {
-        return v.to_vec();
-    }
-    let n = v.len();
-    let mut out = vec![f32::NAN; n];
-    let (mut lo, mut hi) = (0usize, 0usize);
-    let (mut sum, mut cnt) = (0f64, 0usize);
-    for i in 0..n {
-        while hi < n && s[hi] <= s[i] + r {
-            if v[hi].is_finite() {
-                sum += v[hi] as f64;
-                cnt += 1;
-            }
-            hi += 1;
-        }
-        while s[lo] < s[i] - r {
-            if v[lo].is_finite() {
-                sum -= v[lo] as f64;
-                cnt -= 1;
-            }
-            lo += 1;
-        }
-        if cnt > 0 {
-            out[i] = (sum / cnt as f64) as f32;
-        }
-    }
-    out
-}
-
-/// Fill the gaps of a height profile along a way: where its cross-section was
-/// all water (a pier, a causeway, a crossing without a bridge tag) the way
-/// keeps the height of the land on both sides (interpolated); a way lying
-/// entirely over water sits just above the water surface.
-fn fill_along(h: &mut [f32], water: impl Fn(usize) -> f32) {
-    if !h.iter().any(|v| v.is_finite()) {
-        for (i, v) in h.iter_mut().enumerate() {
-            *v = water(i) + 1.0;
-        }
-    }
-    let known: Vec<usize> = (0..h.len()).filter(|&i| h[i].is_finite()).collect();
-    let (Some(&a), Some(&b)) = (known.first(), known.last()) else { return };
-    for i in 0..a {
-        h[i] = h[a];
-    }
-    for i in b + 1..h.len() {
-        h[i] = h[b];
-    }
-    for w in known.windows(2) {
-        let (p, q) = (w[0], w[1]);
-        for i in p + 1..q {
-            let t = (i - p) as f32 / (q - p) as f32;
-            h[i] = h[p] + (h[q] - h[p]) * t;
-        }
-    }
-}
-
 /// Median over ±k neighbours (NaN-aware).
 fn median_filter(v: &[f32], k: usize) -> Vec<f32> {
     (0..v.len())
@@ -348,6 +309,20 @@ fn road_prio(code: u8) -> u8 {
     }
 }
 
+/// Grade (rise per m) of the ramps that join a road to the one it meets.
+fn road_grade(code: u8) -> f32 {
+    match code {
+        RD_MOTORWAY => 0.05,
+        RD_NATIONAL => 0.06,
+        RD_PREF => 0.07,
+        RD_GENERAL => 0.08,
+        RD_NARROW => 0.1,
+        RD_TRACK => 0.12,
+        RD_STEPS => 0.6,
+        _ => 0.15,
+    }
+}
+
 /// Smoothing radius (m) of the surface profile along a road.
 fn road_smooth_r(code: u8) -> f64 {
     match code {
@@ -371,6 +346,8 @@ pub struct Inputs<'a> {
     pub rdcompt: &'a [VFeat],
     /// profiled bridges/tunnels (for elevated platforms)
     pub structs: &'a [VFeat],
+    /// building ids of the window (roads keep out of them)
+    pub bldg: &'a [u32],
 }
 
 pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
@@ -440,7 +417,10 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
     }
     let grid = Grid::new(n, 8.0, segs);
 
-    // ---- roads
+    // ---- roads: the geometry, widths and raw heights of every way; the
+    // heights solved over the whole network (profile.rs: split ways are one
+    // line, side roads meet the road they join, bridge and tunnel ends hold);
+    // then painted in order of priority
     let mut road = vec![0u8; n * n];
     let mut roadh = vec![f32::NAN; n * n];
     let mut ways: Vec<(u8, &VFeat)> = Vec::new();
@@ -453,12 +433,263 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
         }
         ways.push((road_code(f.class, &f.text), f));
     }
-    ways.sort_by_key(|(c, f)| (road_prio(*c), f.id));
+    // painted in order of priority, the higher class last (it keeps a
+    // crossing); ramps (*_link) before every main road, so a ramp ending on a
+    // road or running into it never paints over that road's carriageway
+    let link = |f: &VFeat| matches!(f.class, 2 | 4 | 6 | 8 | 10);
+    ways.sort_by_key(|(c, f)| (if link(f) { 13 } else { 2 * road_prio(*c) }, f.id));
+    let bldg_at = |q: [f64; 2]| -> bool {
+        let (x, z) = (q[0].floor() as i64, q[1].floor() as i64);
+        x >= 0 && z >= 0 && x < n as i64 && z < n as i64 && inp.bldg[z as usize * n + x as usize] != 0
+    };
+    let near = |q: [f64; 2]| inside(q, 60.0);
+    let lines: Vec<Option<RLine>> = ways
+        .par_iter()
+        .map(|&(code, f)| {
+            if f.area || f.flags & F_AREA != 0 {
+                return None;
+            }
+            let px = to_px(&f.parts[0]);
+            let (pts, s, vidx) = crate::profile::densify(&px, 2.0);
+            if pts.len() < 2 {
+                return None;
+            }
+            let half = (road_width(f.class, f.nums, &f.text) / 2.0) as f64;
+            // how far to look for the road edge (half widths of real roads of the class)
+            let dmax = match f.class {
+                1 | 2 => 15.0f64,
+                3..=6 => 25.0,
+                7 | 8 => 18.0,
+                9 | 10 => 14.0,
+                11 | 12 | 16 | 23 => 10.0,
+                13 | 14 => 7.0,
+                15 => 6.0,
+                _ => 5.0,
+            }
+            .max(half + 1.0);
+            let use_edges = !matches!(code, RD_TRAIL | RD_STEPS | RD_SIDEWALK);
+            let oneway = f.flags & F_ONEWAY != 0;
+            let nm = normals(&pts);
+            let m = pts.len();
+            let (mut wl, mut wr, mut sl, mut sr) = (vec![half as f32; m], vec![half as f32; m], vec![f32::NAN; m], vec![f32::NAN; m]);
+            let (mut ml, mut mr) = (vec![f32::NAN; m], vec![f32::NAN; m]);
+            let mut edges = 0usize;
+            // how far each side may reach before a building
+            let (mut capl, mut capr) = (vec![f32::INFINITY; m], vec![f32::INFINITY; m]);
+            for i in 0..m {
+                if !near(pts[i]) {
+                    continue;
+                }
+                let (_, nr) = nm[i];
+                // a building beside the road bounds it (a road running through
+                // a building is left to the tile stage)
+                let in_bldg = bldg_at(pts[i]);
+                for (side, dir) in [(0, nr), (1, [-nr[0], -nr[1]])] {
+                    let mut wside = if side == 0 { wr[i] } else { wl[i] };
+                    if use_edges {
+                        let hit = grid.cast(pts[i], dir, 0.6, dmax);
+                        // a median strip bounds a carriageway of a dual road (one-way
+                        // ways); on a single two-way way it is the planted centre
+                        let mut we = hit[K_EDGE];
+                        let wm = hit[K_MEDIAN];
+                        if oneway {
+                            we = we.min(wm);
+                        } else if wm < 4.0 && wm < we {
+                            if side == 0 { mr[i] = wm as f32 } else { ml[i] = wm as f32 }
+                        }
+                        if we.is_finite() && we >= 1.0 {
+                            wside = we as f32;
+                            edges += 1;
+                            // an edge beyond the usual width only where the ground
+                            // stays level out to it (outside the cities the edges are
+                            // mapped coarsely; a road does not reach up a hillside)
+                            let c0 = sample(pts[i]);
+                            if wside as f64 > half && c0.is_finite() {
+                                let mut t = half;
+                                while t < wside as f64 {
+                                    let hv = sample([pts[i][0] + dir[0] * (t + 0.5), pts[i][1] + dir[1] * (t + 0.5)]);
+                                    if hv.is_finite() && (hv - c0).abs() > 2.5 {
+                                        break;
+                                    }
+                                    t += 0.5;
+                                }
+                                wside = wside.min(t as f32);
+                            }
+                            let ws = hit[K_WALK];
+                            if ws.is_finite() && ws < we - 0.8 {
+                                if side == 0 { sr[i] = ws as f32 } else { sl[i] = ws as f32 }
+                            }
+                        }
+                    }
+                    if !in_bldg {
+                        let mut t = 0.5;
+                        while t < dmax.max(wside as f64) + 0.5 {
+                            if bldg_at([pts[i][0] + dir[0] * t, pts[i][1] + dir[1] * t]) {
+                                let cap = ((t - 0.5) as f32).max(1.0);
+                                if side == 0 { capr[i] = cap } else { capl[i] = cap }
+                                break;
+                            }
+                            t += 0.5;
+                        }
+                    }
+                    if side == 0 { wr[i] = wside } else { wl[i] = wside }
+                }
+            }
+            if use_edges {
+                wl = median_filter(&wl, 5);
+                wr = median_filter(&wr, 5);
+            }
+            for i in 0..m {
+                wl[i] = wl[i].min(capl[i]);
+                wr[i] = wr[i].min(capr[i]);
+            }
+            if use_edges {
+                // a sidewalk line must be seen at most points nearby to count
+                let keep = |v: &[f32]| -> Vec<f32> {
+                    let med = median_filter(v, 3);
+                    (0..v.len())
+                        .map(|i| {
+                            let lo = i.saturating_sub(3);
+                            let hi = (i + 4).min(v.len());
+                            let seen = v[lo..hi].iter().filter(|x| x.is_finite()).count();
+                            if seen * 2 > hi - lo { med[i] } else { f32::NAN }
+                        })
+                        .collect()
+                };
+                sl = keep(&sl);
+                sr = keep(&sr);
+                ml = keep(&ml);
+                mr = keep(&mr);
+            }
+            // raw surface height: the median of the land across the road
+            let mut raw = vec![f32::NAN; m];
+            for i in 0..m {
+                if !near(pts[i]) {
+                    continue;
+                }
+                let (_, nr) = nm[i];
+                let mut v: Vec<f32> = Vec::new();
+                let (a, b) = (-(wl[i].max(0.5) as f64), wr[i].max(0.5) as f64);
+                let mut o = a;
+                while o <= b + 1e-6 {
+                    let hv = sample([pts[i][0] + nr[0] * o, pts[i][1] + nr[1] * o]);
+                    if hv.is_finite() {
+                        v.push(hv);
+                    }
+                    o += 1.0;
+                }
+                if !v.is_empty() {
+                    v.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                    raw[i] = v[v.len() / 2];
+                }
+            }
+            let water: Vec<f32> = pts.iter().map(|&q| water_top(q)).collect();
+            Some(RLine { pts, s, vidx, wl, wr, sl, sr, ml, mr, raw, water, edges })
+        })
+        .collect();
+    // bridge and tunnel ends hold the ground roads that meet them
+    let mut pins: HashMap<crate::profile::Key, crate::profile::Pin> = HashMap::new();
+    for f in inp.structs.iter().filter(|f| f.nums[3] < 0.5) {
+        let (Some(p), Some(z)) = (f.parts.first(), f.zs.first()) else { continue };
+        let vehicle = matches!(f.class, 1..=16 | 23);
+        for (q, &h) in p.iter().zip(z) {
+            pins.entry(crate::profile::key(*q)).or_insert(crate::profile::Pin { h, vehicle });
+        }
+    }
+    let mut line_of = vec![usize::MAX; ways.len()];
+    let mut pways: Vec<crate::profile::PWay> = Vec::new();
+    for (wi, l) in lines.iter().enumerate() {
+        let Some(l) = l else { continue };
+        let (code, f) = ways[wi];
+        line_of[wi] = pways.len();
+        pways.push(crate::profile::PWay {
+            id: f.id,
+            verts: &f.parts[0],
+            vidx: l.vidx.clone(),
+            s: l.s.clone(),
+            raw: l.raw.clone(),
+            water: l.water.clone(),
+            rank: road_prio(code),
+            radius: road_smooth_r(code),
+            grade: road_grade(code),
+            name: tag(&f.text, "ref").or_else(|| tag(&f.text, "name")).unwrap_or("").to_string(),
+            vehicle: matches!(f.class, 1..=16 | 23),
+        });
+    }
+    let solved = crate::profile::solve(&pways, &pins);
+    drop(pways);
+    // the decks and tunnel floors of road structures (pixel -> structure,
+    // lowest and highest surface): a ground road is not painted where a
+    // structure it leads onto covers it at about its height (the end of a
+    // bridge, the mouth of a tunnel), so the deck does not sit on a strip of
+    // road; structures crossing over or under it do not count
+    let mut under: HashMap<usize, Vec<(u32, f32, f32)>> = HashMap::new();
+    let mut struct_at: HashMap<crate::profile::Key, Vec<u32>> = HashMap::new();
+    for (si, f) in inp.structs.iter().enumerate().filter(|(_, f)| f.nums[3] < 0.5) {
+        let si = si as u32;
+        if let Some(p) = f.parts.first() {
+            for q in p {
+                let v = struct_at.entry(crate::profile::key(*q)).or_default();
+                if !v.contains(&si) {
+                    v.push(si);
+                }
+            }
+        }
+        let (Some(p), Some(z)) = (f.parts.first(), f.zs.first()) else { continue };
+        if p.len() < 2 || z.len() != p.len() {
+            continue;
+        }
+        let hw = (road_width(f.class, f.nums, &f.text) + 1.0) as f64 / 2.0;
+        let px = to_px(p);
+        let last = px.len() - 2;
+        for k in 0..px.len() - 1 {
+            if !inside(px[k], 40.0) && !inside(px[k + 1], 40.0) {
+                continue;
+            }
+            segment_pixels(n, px[k], px[k + 1], hw, |q, _, t| {
+                // not past the two ends (the road leading on keeps its markings up to them)
+                if (k == 0 && t <= 0.0) || (k == last && t >= 1.0) {
+                    return;
+                }
+                let h = z[k] + (z[k + 1] - z[k]) * t as f32;
+                let v = under.entry(q).or_default();
+                match v.iter_mut().find(|e| e.0 == si) {
+                    Some(e) => {
+                        e.1 = e.1.min(h);
+                        e.2 = e.2.max(h);
+                    }
+                    None => v.push((si, h, h)),
+                }
+            });
+        }
+    }
     // nearest segment of the current way per pixel, so the round cap of one
     // segment at a bend does not override the next segment's projection
     let mut owner = vec![u32::MAX; n * n];
     let mut odist = vec![f32::INFINITY; n * n];
     let mut rdir = vec![0u8; n * n];
+    // the surface under a lane marking (a zebra crossing's gaps get it back)
+    let mut carriage = vec![0u8; n * n];
+    // the way painted on each pixel, its distance from that way's centre line, its direction
+    let mut pway = vec![u32::MAX; n * n];
+    let mut pd = vec![f32::INFINITY; n * n];
+    let mut pdir = vec![0u8; n * n];
+    // vehicle road pixels painted inside a building (the tile stage decides
+    // whether the road or the building gives way)
+    let mut thru: Vec<(usize, u32)> = Vec::new();
+    // end vertices of every way: a way that ends where another begins (a road
+    // split into ways, a ramp joining) continues it
+    let ends: Vec<(crate::profile::Key, crate::profile::Key)> = ways
+        .iter()
+        .map(|(_, f)| match f.parts.first() {
+            Some(pt) if !pt.is_empty() => (crate::profile::key(pt[0]), crate::profile::key(pt[pt.len() - 1])),
+            _ => ((i64::MIN, i64::MIN), (i64::MAX, i64::MAX)),
+        })
+        .collect();
+    let continues = |a: usize, b: usize| {
+        let ((a0, a1), (b0, b1)) = (ends[a], ends[b]);
+        a0 == b0 || a0 == b1 || a1 == b0 || a1 == b1
+    };
     for (wi, (code, f)) in ways.iter().enumerate() {
         let code = *code;
         stats[0] += 1;
@@ -472,101 +703,18 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
             });
             continue;
         }
-        let px = to_px(&f.parts[0]);
-        let (pts, s) = densify(&px, 2.0);
-        if pts.len() < 2 {
-            continue;
-        }
-        let half = (road_width(f.class, f.nums, &f.text) / 2.0) as f64;
-        // how far to look for the road edge (half widths of real roads of the class)
-        let dmax = match f.class {
-            1 | 2 => 15.0f64,
-            3..=6 => 25.0,
-            7 | 8 => 18.0,
-            9 | 10 => 14.0,
-            11 | 12 | 16 | 23 => 10.0,
-            13 | 14 => 7.0,
-            15 => 6.0,
-            _ => 5.0,
-        }
-        .max(half + 1.0);
-        let use_edges = !matches!(code, RD_TRAIL | RD_STEPS | RD_SIDEWALK);
-        let oneway = f.flags & F_ONEWAY != 0;
-        let nm = normals(&pts);
+        let Some(l) = &lines[wi] else { continue };
+        stats[1] += l.edges;
+        let h = &solved[line_of[wi]];
+        let (pts, s) = (&l.pts, &l.s);
+        let (wl, wr, sl, sr, ml, mr) = (&l.wl, &l.wr, &l.sl, &l.sr, &l.ml, &l.mr);
         let m = pts.len();
-        let (mut wl, mut wr, mut sl, mut sr) = (vec![half as f32; m], vec![half as f32; m], vec![f32::NAN; m], vec![f32::NAN; m]);
-        let (mut ml, mut mr) = (vec![f32::NAN; m], vec![f32::NAN; m]);
-        let near = |q: [f64; 2]| inside(q, 60.0);
-        if use_edges {
-            for i in 0..m {
-                if !near(pts[i]) {
-                    continue;
-                }
-                let (_, nr) = nm[i];
-                for (side, dir) in [(0, nr), (1, [-nr[0], -nr[1]])] {
-                    let hit = grid.cast(pts[i], dir, 0.6, dmax);
-                    // a median strip bounds a carriageway of a dual road (one-way
-                    // ways); on a single two-way way it is the planted centre
-                    let mut we = hit[K_EDGE];
-                    let wm = hit[K_MEDIAN];
-                    if oneway {
-                        we = we.min(wm);
-                    } else if wm < 4.0 && wm < we {
-                        if side == 0 { mr[i] = wm as f32 } else { ml[i] = wm as f32 }
-                    }
-                    if we.is_finite() && we >= 1.0 {
-                        if side == 0 { wr[i] = we as f32 } else { wl[i] = we as f32 }
-                        stats[1] += 1;
-                        let ws = hit[K_WALK];
-                        if ws.is_finite() && ws < we - 0.8 {
-                            if side == 0 { sr[i] = ws as f32 } else { sl[i] = ws as f32 }
-                        }
-                    }
-                }
-            }
-            wl = median_filter(&wl, 5);
-            wr = median_filter(&wr, 5);
-            // a sidewalk line must be seen at most points nearby to count
-            let keep = |v: &[f32]| -> Vec<f32> {
-                let med = median_filter(v, 3);
-                (0..v.len())
-                    .map(|i| {
-                        let lo = i.saturating_sub(3);
-                        let hi = (i + 4).min(v.len());
-                        let seen = v[lo..hi].iter().filter(|x| x.is_finite()).count();
-                        if seen * 2 > hi - lo { med[i] } else { f32::NAN }
-                    })
-                    .collect()
-            };
-            sl = keep(&sl);
-            sr = keep(&sr);
-            ml = keep(&ml);
-            mr = keep(&mr);
-        }
-        // surface height: cross-section median, smoothed along the road
-        let mut h = vec![f32::NAN; m];
-        for i in 0..m {
-            if !near(pts[i]) {
-                continue;
-            }
-            let (_, nr) = nm[i];
-            let mut v: Vec<f32> = Vec::new();
-            let (a, b) = (-(wl[i].max(0.5) as f64), wr[i].max(0.5) as f64);
-            let mut o = a;
-            while o <= b + 1e-6 {
-                let hv = sample([pts[i][0] + nr[0] * o, pts[i][1] + nr[1] * o]);
-                if hv.is_finite() {
-                    v.push(hv);
-                }
-                o += 1.0;
-            }
-            if !v.is_empty() {
-                v.sort_by(|x, y| x.partial_cmp(y).unwrap());
-                h[i] = v[v.len() / 2];
-            }
-        }
-        let mut h = smooth(&h, &s, road_smooth_r(code));
-        fill_along(&mut h, |i| water_top(pts[i]));
+        let oneway = f.flags & F_ONEWAY != 0;
+        let vehicle_way = matches!(f.class, 1..=16 | 23);
+        // the structures this way leads onto
+        let mut onto: Vec<u32> = f.parts[0].iter().filter_map(|q| struct_at.get(&crate::profile::key(*q))).flatten().copied().collect();
+        onto.sort_unstable();
+        onto.dedup();
         // markings
         let lanes = f.nums[1];
         let wi = wi as u32;
@@ -576,6 +724,7 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
             }
             let wmax = (wl[k].max(wr[k]).max(wl[k + 1]).max(wr[k + 1]) as f64) + 0.5;
             let ang = (pts[k + 1][1] - pts[k][1]).atan2(pts[k + 1][0] - pts[k][0]).to_degrees().rem_euclid(180.0);
+            let wf = (ang.to_radians().cos().abs() + ang.to_radians().sin().abs()) as f32;
             let dir = (ang.round() as u16 % 180) as u8 + 1;
             let vehicle = matches!(code, RD_MOTORWAY | RD_NATIONAL | RD_PREF | RD_GENERAL | RD_NARROW | RD_TRACK);
             segment_pixels(n, pts[k], pts[k + 1], wmax, |p, u, t| {
@@ -589,20 +738,48 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
                 if owner[p] == wi && odist[p] <= d {
                     return;
                 }
+                // the round end of the way: surface only, and only where no
+                // other road is (it would paint across the road it ends on)
+                let cap = (k == 0 && t <= 0.0) || (k == m - 2 && t >= 1.0);
+                if cap && road[p] != 0 && pway[p] != wi {
+                    return;
+                }
+                // another carriageway is already painted here. One running
+                // alongside (a ramp beside the main line, the two halves of a
+                // divided road) keeps the pixels nearer its own centre line,
+                // markings and all, so overlapping parallel roads meet along the
+                // line between them; one crossing makes this a junction, where
+                // edge and centre lines stop (they would cut across the mouth of
+                // the side road and the box of the crossing)
+                let other = pway[p] != wi && pway[p] != u32::MAX && matches!(road[p], RD_MOTORWAY | RD_NATIONAL | RD_PREF | RD_GENERAL | RD_NARROW | RD_MARK_WHITE | RD_MARK_YELLOW);
+                // (two roads at different levels, a ramp in a cutting beside the
+                // street above it, do not meet either: the nearer one keeps it)
+                let hh = h[k] + (h[k + 1] - h[k]) * t as f32;
+                let parallel = other && {
+                    let a = (pdir[p] as i32 - dir as i32).rem_euclid(180);
+                    let a = a.min(180 - a);
+                    a <= 20 || (a <= 60 && continues(pway[p] as usize, wi as usize)) || (roadh[p] - hh).abs() > 2.0
+                };
+                if parallel && pd[p] <= d {
+                    return;
+                }
+                let junction = other && !parallel;
                 owner[p] = wi;
                 odist[p] = d;
                 let lerp = |v: &[f32]| v[k] + (v[k + 1] - v[k]) * t as f32;
-                let (ws, ss, wo, so) = if u >= 0.0 { (lerp(&wr), lerp(&sr), lerp(&wl), lerp(&sl)) } else { (lerp(&wl), lerp(&sl), lerp(&wr), lerp(&sr)) };
+                let (ws, ss, wo, so) = if u >= 0.0 { (lerp(wr), lerp(sr), lerp(wl), lerp(sl)) } else { (lerp(wl), lerp(sl), lerp(wr), lerp(sr)) };
                 let au = u.abs() as f32;
                 if au > ws {
                     return;
                 }
-                let hh = h[k] + (h[k + 1] - h[k]) * t as f32;
                 if !hh.is_finite() {
                     return;
                 }
+                if !onto.is_empty() && under.get(&p).is_some_and(|v| v.iter().any(|&(si, lo, hi)| hh > lo - 3.0 && hh < hi + 3.0 && onto.binary_search(&si).is_ok())) {
+                    return;
+                }
                 let mut c = code;
-                let med = if u >= 0.0 { lerp(&mr) } else { lerp(&ml) };
+                let med = if u >= 0.0 { lerp(mr) } else { lerp(ml) };
                 if ss.is_finite() && au >= ss {
                     c = RD_SIDEWALK;
                 } else if med.is_finite() && au < med {
@@ -615,78 +792,144 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
                     let hc = (r_in + l_in) / 2.0;
                     let v = u as f32 - (r_in - l_in) / 2.0;
                     let sl_ = s[k] + (s[k + 1] - s[k]) * t;
-                    c = marking(code, f.class, v, hc, sl_, oneway, lanes).unwrap_or(code);
+                    c = marking(code, f.class, v, hc, sl_, oneway, lanes, wf).unwrap_or(code);
+                    if junction || cap {
+                        c = code;
+                    }
+                }
+                if vehicle_way && inp.bldg[p] != 0 {
+                    thru.push((p, inp.bldg[p]));
                 }
                 road[p] = c;
+                carriage[p] = if matches!(c, RD_MARK_WHITE | RD_MARK_YELLOW) { code } else { c };
                 roadh[p] = hh;
+                pway[p] = wi;
+                pd[p] = d;
+                pdir[p] = dir;
             });
         }
     }
-    // zebra crossings painted onto carriageways
+    // zebra crossings painted onto carriageways: 1 m bars along the road, 1 m
+    // apart across it; the bars follow the grid axis nearest to the road, so a
+    // crossing of a diagonal road is a clean ladder of pixels, not a checkerboard
     for f in inp.roads {
         if tag(&f.text, "footway") != Some("crossing") || road_ids.contains(&f.id) || f.parts.is_empty() || f.area {
             continue;
         }
-        let (pts, s) = densify(&to_px(&f.parts[0]), 1.0);
+        let (pts, _) = densify(&to_px(&f.parts[0]), 1.0);
         for k in 0..pts.len().saturating_sub(1) {
-            segment_pixels(n, pts[k], pts[k + 1], 2.0, |p, _, t| {
+            // the crossing runs across the road: alternate along it
+            let across_x = (pts[k + 1][0] - pts[k][0]).abs() >= (pts[k + 1][1] - pts[k][1]).abs();
+            segment_pixels(n, pts[k], pts[k + 1], 2.0, |p, _, _| {
                 if matches!(road[p], RD_MOTORWAY | RD_NATIONAL | RD_PREF | RD_GENERAL | RD_NARROW | RD_MARK_WHITE | RD_MARK_YELLOW) {
-                    let sl_ = s[k] + (s[k + 1] - s[k]) * t;
-                    if (sl_.floor() as i64).rem_euclid(2) == 0 {
+                    let bar = if across_x { (p % n) % 2 == 0 } else { (p / n) % 2 == 0 };
+                    if bar {
                         road[p] = RD_MARK_WHITE;
                     } else if road[p] == RD_MARK_WHITE || road[p] == RD_MARK_YELLOW {
-                        road[p] = RD_GENERAL;
+                        road[p] = if carriage[p] != 0 { carriage[p] } else { RD_GENERAL };
                     }
                 }
             });
         }
     }
 
-    // ---- rails
+    // ---- rails: raw heights per line, solved over the rail network like the
+    // roads (a line split at stations and switches is one profile, sidings meet
+    // the main line, bridge and tunnel ends hold), then laid
     let mut rail = vec![0u8; n * n];
     let mut railh = vec![f32::NAN; n * n];
     let mut rails: Vec<&VFeat> = inp.rails.iter().filter(|f| !rail_ids.contains(&f.id) && !f.area && !f.parts.is_empty() && f.class != 5).collect();
     // sidings first, main lines last (they win where they overlap)
     rails.sort_by_key(|f| (f.flags & F_SERVICE == 0, f.flags & F_HIGHSPEED != 0, f.id));
-    for f in rails {
-        let (pts, s) = densify(&to_px(&f.parts[0]), 1.0);
-        if pts.len() < 2 || !pts.iter().any(|&q| inside(q, 60.0)) {
-            continue;
+    struct RailLine {
+        pts: Vec<[f64; 2]>,
+        s: Vec<f64>,
+        vidx: Vec<usize>,
+        raw: Vec<f32>,
+        water: Vec<f32>,
+    }
+    let rlines: Vec<Option<RailLine>> = rails
+        .iter()
+        .map(|f| {
+            let (pts, s, vidx) = crate::profile::densify(&to_px(&f.parts[0]), 1.0);
+            if pts.len() < 2 || !pts.iter().any(|&q| inside(q, 60.0)) {
+                return None;
+            }
+            let hs = f.flags & F_HIGHSPEED != 0;
+            let tram = f.class == 7;
+            let tracks = (f.nums[0].round() as i32).clamp(1, 8);
+            let spacing = if hs { 4.3 } else { 4.0 };
+            let nm = normals(&pts);
+            let span = (tracks as f64 - 1.0) * spacing / 2.0 + 1.5;
+            let mut raw = vec![f32::NAN; pts.len()];
+            for i in 0..pts.len() {
+                if !inside(pts[i], 80.0) {
+                    continue;
+                }
+                let (_, nr) = nm[i];
+                let mut v: Vec<f32> = Vec::new();
+                let mut o = -span;
+                while o <= span + 1e-6 {
+                    let q = [pts[i][0] + nr[0] * o, pts[i][1] + nr[1] * o];
+                    let (x, z) = (q[0].floor() as i64, q[1].floor() as i64);
+                    // trams run on the road surface
+                    let rv = if x >= 0 && z >= 0 && (x as usize) < n && (z as usize) < n { roadh[z as usize * n + x as usize] } else { f32::NAN };
+                    let hv = if tram && rv.is_finite() { rv } else { sample(q) };
+                    if hv.is_finite() {
+                        v.push(hv);
+                    }
+                    o += 1.0;
+                }
+                if !v.is_empty() {
+                    v.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                    raw[i] = v[v.len() / 2];
+                }
+            }
+            let water: Vec<f32> = pts.iter().map(|&q| water_top(q)).collect();
+            Some(RailLine { pts, s, vidx, raw, water })
+        })
+        .collect();
+    let mut rpins: HashMap<crate::profile::Key, crate::profile::Pin> = HashMap::new();
+    for f in inp.structs.iter().filter(|f| f.nums[3] >= 0.5) {
+        let (Some(p), Some(z)) = (f.parts.first(), f.zs.first()) else { continue };
+        for (q, &h) in p.iter().zip(z) {
+            rpins.entry(crate::profile::key(*q)).or_insert(crate::profile::Pin { h, vehicle: false });
         }
+    }
+    let mut rline_of = vec![usize::MAX; rails.len()];
+    let mut rways: Vec<crate::profile::PWay> = Vec::new();
+    for (ri, l) in rlines.iter().enumerate() {
+        let Some(l) = l else { continue };
+        let f = rails[ri];
+        let (tram, service, hs) = (f.class == 7, f.flags & F_SERVICE != 0, f.flags & F_HIGHSPEED != 0);
+        rline_of[ri] = rways.len();
+        rways.push(crate::profile::PWay {
+            id: f.id,
+            verts: &f.parts[0],
+            vidx: l.vidx.clone(),
+            s: l.s.clone(),
+            raw: l.raw.clone(),
+            water: l.water.clone(),
+            rank: if tram { 0 } else if service { 1 } else if hs { 3 } else { 2 },
+            radius: if tram { 6.0 } else if service { 15.0 } else { 40.0 },
+            grade: if tram { 0.06 } else if hs { 0.02 } else { 0.03 },
+            name: tag(&f.text, "name").unwrap_or("").to_string(),
+            vehicle: false,
+        });
+    }
+    let rsolved = crate::profile::solve(&rways, &rpins);
+    drop(rways);
+    for (ri, f) in rails.iter().enumerate() {
+        let Some(l) = &rlines[ri] else { continue };
         stats[2] += 1;
+        let h = &rsolved[rline_of[ri]];
+        let pts = &l.pts;
         let hs = f.flags & F_HIGHSPEED != 0;
         let tram = f.class == 7;
         let tracks = (f.nums[0].round() as i32).clamp(1, 8);
         let spacing = if hs { 4.3 } else { 4.0 };
-        let nm = normals(&pts);
-        let span = (tracks as f64 - 1.0) * spacing / 2.0 + 1.5;
-        let mut h = vec![f32::NAN; pts.len()];
-        for i in 0..pts.len() {
-            if !inside(pts[i], 80.0) {
-                continue;
-            }
-            let (_, nr) = nm[i];
-            let mut v: Vec<f32> = Vec::new();
-            let mut o = -span;
-            while o <= span + 1e-6 {
-                let q = [pts[i][0] + nr[0] * o, pts[i][1] + nr[1] * o];
-                let (x, z) = (q[0].floor() as i64, q[1].floor() as i64);
-                // trams run on the road surface
-                let rv = if x >= 0 && z >= 0 && (x as usize) < n && (z as usize) < n { roadh[z as usize * n + x as usize] } else { f32::NAN };
-                let hv = if tram && rv.is_finite() { rv } else { sample(q) };
-                if hv.is_finite() {
-                    v.push(hv);
-                }
-                o += 1.0;
-            }
-            if !v.is_empty() {
-                v.sort_by(|x, y| x.partial_cmp(y).unwrap());
-                h[i] = v[v.len() / 2];
-            }
-        }
-        let r = if tram { 6.0 } else if f.flags & F_SERVICE != 0 { 15.0 } else { 40.0 };
-        let mut h = smooth(&h, &s, r);
-        fill_along(&mut h, |i| water_top(pts[i]));
+        let nm = normals(pts);
+        let _ = &l.s;
         for k in 0..tracks {
             let off = (k as f64 - (tracks as f64 - 1.0) / 2.0) * spacing;
             let tp: Vec<[f64; 2]> = pts.iter().zip(&nm).map(|(q, (_, nr))| [q[0] + nr[0] * off, q[1] + nr[1] * off]).collect();
@@ -714,6 +957,38 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
             });
         }
     }
+    // the bed between parallel tracks (stations, yards): ballast across a gap
+    // of up to 6 m between two track beds at about the same height, so the
+    // ground between the tracks is not lawn or pavement
+    {
+        let src = rail.clone();
+        let bed = |q: usize| matches!(src[q], RAIL_TRACK | RAIL_BALLAST);
+        let free = |q: usize| src[q] == 0 && road[q] == 0 && inp.bldg[q] == 0 && !matches!(cls[q], K_OUT | K_SEA | K_INLAND);
+        for (stride, step, lines) in [(n, 1usize, n), (1usize, n, n)] {
+            for line in 0..lines {
+                let at = |k: usize| line * stride + k * step;
+                let mut last: Option<usize> = None;
+                for k in 0..n {
+                    let p = at(k);
+                    if bed(p) {
+                        if let Some(l) = last {
+                            let (a, b) = (at(l), p);
+                            if k - l > 1 && k - l <= 7 && (railh[a] - railh[b]).abs() <= 1.5 {
+                                for j in l + 1..k {
+                                    let q = at(j);
+                                    rail[q] = RAIL_BALLAST;
+                                    railh[q] = railh[a] + (railh[b] - railh[a]) * (j - l) as f32 / (k - l) as f32;
+                                }
+                            }
+                        }
+                        last = Some(k);
+                    } else if !free(p) {
+                        last = None;
+                    }
+                }
+            }
+        }
+    }
 
     // ---- platforms: height of the nearest track (ground or viaduct)
     let mut seed_h = vec![f32::NAN; n * n];
@@ -739,7 +1014,9 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
     }
     let mut plat: Vec<usize> = Vec::new();
     for f in inp.platforms {
-        let rail_platform = f.text.contains("railway=platform") || (f.text.contains("public_transport=platform") && !f.text.contains("highway=platform"));
+        // (bus stops are public-transport platforms too)
+        let bus = f.text.contains("highway=bus_stop") || f.text.contains("bus=yes") || f.text.contains("amenity=bus_station");
+        let rail_platform = f.text.contains("railway=platform") || (f.text.contains("public_transport=platform") && !f.text.contains("highway=platform") && !bus);
         if !rail_platform || f.flags & F_TUNNEL != 0 || f.nums[2] < 0.0 || tag(&f.text, "level").is_some_and(|l| l.starts_with('-')) {
             continue;
         }
@@ -803,24 +1080,30 @@ pub fn rasterize(w: &Win, hgt: &[f32], cls: &[u8], inp: &Inputs) -> Net {
             }
         }
     }
-    Net { road, roadh, rail, railh, rdir, stats }
+    Net { road, roadh, rail, railh, rdir, stats, thru }
 }
 
 /// Lane marking at lateral offset `v` from the carriageway centre (half width `hc`).
-fn marking(code: u8, class: u16, v: f32, hc: f32, s: f64, oneway: bool, lanes: f32) -> Option<u8> {
+/// `wf` (|cos| + |sin| of the road's direction, 1 to √2) widens the 1 m lines
+/// of a diagonal road so that their pixels meet side to side, not corner to
+/// corner: a continuous line instead of a row of dots.
+pub fn marking(code: u8, class: u16, v: f32, hc: f32, s: f64, oneway: bool, lanes: f32, wf: f32) -> Option<u8> {
     let av = v.abs();
-    let on = |pos: f32| (v - pos).abs() < 0.5;
+    let half = 0.5 * wf;
+    let on = |pos: f32| (v - pos).abs() < half;
     match code {
         RD_MOTORWAY => {
             if hc < 2.5 {
                 return None;
             }
-            if av >= hc - 1.5 && av < hc - 0.5 {
+            if (av - (hc - 1.0)).abs() < half {
                 return Some(RD_MARK_WHITE);
             }
             let n = if lanes >= 1.0 { lanes.round() } else { ((2.0 * hc - 3.0) / 3.6).round().max(1.0) };
             let lw = (2.0 * hc - 1.5) / n;
-            let dashed = s.rem_euclid(20.0) < 8.0;
+            // long dashes: 1 m wide lines of several lanes at 8 m on, 12 m off
+            // would read as hatching across the carriageway
+            let dashed = s.rem_euclid(20.0) < 14.0;
             for k in 1..n as i32 {
                 if on(-hc + 0.75 + k as f32 * lw) && dashed {
                     return Some(RD_MARK_WHITE);
@@ -832,13 +1115,13 @@ fn marking(code: u8, class: u16, v: f32, hc: f32, s: f64, oneway: bool, lanes: f
             if 2.0 * hc < 5.5 {
                 return None;
             }
-            if code != RD_GENERAL && av >= hc - 1.0 && av < hc {
+            if code != RD_GENERAL && (av - (hc - 0.5)).abs() < half && av < hc {
                 return Some(RD_MARK_WHITE); // 外側線
             }
             if oneway || class == 2 || class == 4 || class == 6 || class == 8 {
                 return None; // links and one-way roads: no centre line
             }
-            if av < 0.5 {
+            if av < half {
                 return match code {
                     RD_NATIONAL => Some(RD_MARK_YELLOW),
                     RD_PREF => Some(RD_MARK_WHITE),

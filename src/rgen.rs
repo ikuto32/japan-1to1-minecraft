@@ -702,7 +702,7 @@ pub fn patterns(rg: &Gen, cols: &mut [Col], ov: &mut Overlay) {
                 cm.flags |= CF_PATTERN | CF_NO_TREE | CF_NO_PLANT;
             }
             "runway" => {
-                cm.top = ids.black_concrete;
+                cm.top = gen_surface(sp, ids);
                 cm.sub = ids.stone;
                 cm.flags |= CF_PATTERN | CF_NO_TREE | CF_NO_PLANT;
             }
@@ -841,6 +841,11 @@ pub fn tree_voxels(species: &str, h: i32, x: i64, z: i64, out: &mut Vec<(i32, i3
                 }
             }
         }
+        "ginkgo" => {
+            // a narrow, tall crown (street ginkgo)
+            trunk("oak", (h as f32 * 0.55) as i32, out);
+            ellipsoid(h as f32 * 0.62, (h as f32 * 0.17).clamp(1.5, 3.0), h as f32 * 0.4, leaves("birch"), 0.85, out);
+        }
         "birch" => {
             trunk("birch", h - 1, out);
             ellipsoid(h as f32 * 0.7, (h as f32 * 0.18).clamp(1.5, 3.5), h as f32 * 0.3, leaves("birch"), 0.85, out);
@@ -895,7 +900,12 @@ fn pick_species(st: &SpecTable, lc: u16, x: i64, z: i64) -> Option<&str> {
 }
 
 /// Voxelize one tree with its trunk at window position (lx, lz).
-fn place_tree(rg: &Gen, cols: &[Col], ov: &mut Overlay, vox: &mut Vec<(i32, i32, i32, BlockId)>, species: &str, mut ht: f32, x: i64, z: i64) {
+/// A crown reaches over a road 4.5 m above its surface (a half-slab road on the
+/// block above the ground: leaves from six blocks above the ground), as trees
+/// by a road do, and over water two blocks above it; never over rails,
+/// buildings or structures. A street tree (`street`) stands on a sidewalk or a
+/// median.
+fn place_tree(rg: &Gen, cols: &[Col], ov: &mut Overlay, deck_bottom: &[i32], vox: &mut Vec<(i32, i32, i32, BlockId)>, species: &str, mut ht: f32, x: i64, z: i64, street: bool) {
     let n = rg.n as i64;
     let (lx, lz) = (x - rg.ox, z - rg.oz);
     let c = cols[(lz * n + lx) as usize];
@@ -911,7 +921,9 @@ fn place_tree(rg: &Gen, cols: &[Col], ov: &mut Overlay, vox: &mut Vec<(i32, i32,
     // nothing may stand in the trunk's way (bridge decks, canopies, wires)
     let i = (lz * n + lx) as usize;
     let top = c.g + ht.round() as i32 + 2;
-    if ov.v[i].iter().any(|&(y, _)| y > c.g && y <= top) {
+    // (a street tree's trunk replaces the half slab of the sidewalk it stands on)
+    let from = if street { c.g + 1 } else { c.g };
+    if ov.v[i].iter().any(|&(y, _)| y > from && y <= top) {
         return;
     }
     tree_voxels(species, ht.round() as i32, x, z, vox);
@@ -923,12 +935,18 @@ fn place_tree(rg: &Gen, cols: &[Col], ov: &mut Overlay, vox: &mut Vec<(i32, i32,
         }
         let j = (pz * n + px) as usize;
         let cj = &cols[j];
-        if cj.out || cj.flags & (CF_WATER | CF_BLDG | CF_ROAD | CF_RAIL | CF_STRUCT) != 0 {
+        let y = base + dy;
+        let trunk = dx == 0 && dz == 0;
+        let over_road = (street && trunk) || (!trunk && y >= cj.top_y() + 6);
+        let over_water = !trunk && y >= cj.top_y() + 2;
+        if cj.out || cj.flags & (CF_BLDG | CF_RAIL | CF_STRUCT) != 0 || (cj.flags & CF_ROAD != 0 && !over_road) || (cj.flags & CF_WATER != 0 && !over_water) {
             continue;
         }
-        let y = base + dy;
         if (dx != 0 || dz != 0) && ov.get(j, y).is_some() {
             continue; // leaves never replace other blocks
+        }
+        if y >= deck_bottom[j] - 1 {
+            continue; // nothing grows onto a bridge deck or the road on it
         }
         if dx == 0 && dz == 0 {
             if y <= cj.top_y() {
@@ -941,32 +959,84 @@ fn place_tree(rg: &Gen, cols: &[Col], ov: &mut Overlay, vox: &mut Vec<(i32, i32,
     }
 }
 
+/// Canopy height (m) for a value of the CHMv2 canopy height map (m). The map
+/// is far too low in Japan's dense forests: its values are mapped to the
+/// median height of the LiDAR tree tops with that value in the two Shizuoka
+/// survey areas (cedar and cypress stands measured tree by tree agree).
+pub fn chm2_height(raw: u8) -> f32 {
+    const K: [(f32, f32); 14] = [(0.0, 0.0), (1.0, 2.0), (2.0, 7.0), (3.0, 9.2), (6.0, 14.2), (9.0, 20.6), (12.0, 23.0), (15.0, 23.6), (18.0, 24.2), (21.0, 25.0), (24.0, 25.2), (27.0, 26.8), (30.0, 30.0), (60.0, 60.0)];
+    let v = raw as f32;
+    for w in K.windows(2) {
+        if v <= w[1].0 {
+            return w[0].1 + (w[1].1 - w[0].1) * (v - w[0].0) / (w[1].0 - w[0].0);
+        }
+    }
+    v
+}
+
 /// Plant trees. Measured trees (Shizuoka: forest-analysis tree points and
-/// tree tops of the LiDAR canopy model) are placed where they stand with
-/// their height; elsewhere every land-cover class with trees gets them on a
-/// global jittered grid, so neighbouring regions agree on every tree.
-pub fn trees(rg: &Gen, cols: &[Col], ov: &mut Overlay) {
+/// tree tops of the LiDAR canopy model; elsewhere tree tops of the CHMv2
+/// canopy map outside forest stands; Tokyo's street trees) are placed where
+/// they stand with their height; elsewhere every land-cover class with trees
+/// gets them on a global jittered grid, so neighbouring regions agree on
+/// every tree.
+pub fn trees(rg: &Gen, cols: &[Col], ov: &mut Overlay, decks: &crate::infra::Decks) {
+    use crate::infra::{RD_MEDIAN, RD_PEDESTRIAN, RD_SIDEWALK};
+    let deck_bottom = &decks.bottom;
+    let portal: std::collections::HashSet<u32> = decks.surf.iter().filter(|s| s.2 == crate::infra::S_PORTAL).map(|s| s.0).collect();
     let n = rg.n as i64;
     let mut vox = Vec::new();
-    for &(x, z, h, sp) in &rg.fx.trees {
-        let (lx, lz) = (x - rg.ox, z - rg.oz);
+    // the trees filling out a mapped canopy come last: they never take the
+    // place of a measured tree
+    let fill_last = rg.fx.trees.iter().filter(|t| t.3 & crate::trees::SP_FILL == 0).chain(rg.fx.trees.iter().filter(|t| t.3 & crate::trees::SP_FILL != 0));
+    for &(x, z, h, sp) in fill_last {
+        let street = sp & crate::trees::SP_STREET != 0;
+        let sp = sp & !(crate::trees::SP_STREET | crate::trees::SP_FILL);
+        let (mut lx, mut lz) = (x - rg.ox, z - rg.oz);
         if lx < 0 || lz < 0 || lx >= n || lz >= n {
             continue;
         }
-        let i = (lz * n + lx) as usize;
+        let mut i = (lz * n + lx) as usize;
+        if street {
+            // on a sidewalk, a median or open ground, never on a carriageway or
+            // a tunnel mouth: a tree mapped onto one moves to the nearest such
+            // column within 2 m
+            let ok = |j: usize| -> bool {
+                let c = &cols[j];
+                !c.out && c.flags & (CF_WATER | CF_BLDG | CF_RAIL | CF_STRUCT) == 0 && (c.flags & CF_ROAD == 0 || matches!(rg.fx.road[j], RD_SIDEWALK | RD_PEDESTRIAN | RD_MEDIAN)) && !portal.contains(&(j as u32))
+            };
+            if !ok(i) {
+                let mut best: Option<(i64, i64, i64)> = None;
+                for dz in -2i64..=2 {
+                    for dx in -2i64..=2 {
+                        let (px, pz) = (lx + dx, lz + dz);
+                        let d = dx * dx + dz * dz;
+                        if px >= 0 && pz >= 0 && px < n && pz < n && d <= 4 && ok((pz * n + px) as usize) && best.is_none_or(|b| d < b.2) {
+                            best = Some((px, pz, d));
+                        }
+                    }
+                }
+                let Some((px, pz, _)) = best else { continue };
+                (lx, lz) = (px, pz);
+                i = (lz * n + lx) as usize;
+            }
+        } else {
+            let c = &cols[i];
+            if c.out || c.flags & (CF_WATER | CF_BLDG | CF_ROAD | CF_RAIL | CF_STRUCT) != 0 {
+                continue;
+            }
+            // not under bridges or on alpine rock (fields and other patterns may have trees)
+            if c.flags & CF_NO_TREE != 0 && c.flags & CF_PATTERN == 0 {
+                continue;
+            }
+        }
         let c = cols[i];
-        if c.out || c.flags & (CF_WATER | CF_BLDG | CF_ROAD | CF_RAIL | CF_STRUCT) != 0 {
-            continue;
-        }
-        // not under bridges or on alpine rock (fields and other patterns may have trees)
-        if c.flags & CF_NO_TREE != 0 && c.flags & CF_PATTERN == 0 {
-            continue;
-        }
+        let (x, z) = (rg.ox + lx, rg.oz + lz);
         let elev = (c.g - SEA_Y) as f32;
         let species = crate::trees::species_name(sp, elev, x, z)
             .or_else(|| pick_species(rg.st, c.lc, x, z))
             .unwrap_or(if elev < 500.0 && unit(x, z, 63) < 0.6 { "evergreen_broadleaf" } else { "broadleaf" });
-        place_tree(rg, cols, ov, &mut vox, species, h.clamp(1.0, 50.0), x, z);
+        place_tree(rg, cols, ov, deck_bottom, &mut vox, species, h.clamp(1.0, 50.0), x, z, street);
     }
     // close the measured canopy: where the LiDAR canopy surface has no crown
     // of a placed tree, add the top two layers of leaves at its height
@@ -981,7 +1051,7 @@ pub fn trees(rg: &Gen, cols: &[Col], ov: &mut Overlay) {
             continue;
         }
         let top = c.g + (ch as f32 / 5.0).round() as i32;
-        if ov.v[i].iter().any(|&(y, _)| y >= top - 2 && y <= top + 1) {
+        if top >= deck_bottom[i] - 1 || ov.v[i].iter().any(|&(y, _)| y >= top - 2 && y <= top + 1) {
             continue; // a crown is already there
         }
         let (x, z) = (rg.wx(i), rg.wz(i));
@@ -1037,7 +1107,7 @@ pub fn trees(rg: &Gen, cols: &[Col], ov: &mut Overlay) {
                 let Some(species) = pick_species(rg.st, c.lc, x, z) else { continue };
                 let (hmin, hmax) = rg.st.height[c.lc as usize];
                 let ht = hmin + (hmax - hmin) * unit(x, z, 47);
-                place_tree(rg, cols, ov, &mut vox, species, ht, x, z);
+                place_tree(rg, cols, ov, deck_bottom, &mut vox, species, ht, x, z, false);
             }
         }
     }
@@ -1152,17 +1222,25 @@ fn materials(r: &BldRec) -> Mats {
 }
 
 /// Voxelize all buildings in the window. `decks` are the bridge decks over
-/// each column (see infra::apply): a building mostly under a viaduct stays
-/// below it; one mostly over the railway is a station roof.
+/// each column (see infra::apply): a building stays below a viaduct over it
+/// (cut where only a part lies under it); one mostly over the railway is a
+/// station roof.
 pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay, decks: &crate::infra::Decks) {
     let deck_bottom = &decks.bottom;
+    // the highest walking surface of a bridge deck, a viaduct or a footbridge over each column
+    let mut deck_top: HashMap<u32, i32> = HashMap::new();
+    for &(i, y2, kind, _) in &decks.surf {
+        if matches!(kind, crate::infra::S_DECK | crate::infra::S_EDGE | crate::infra::S_EMBANK | crate::infra::S_RAIL) {
+            let e = deck_top.entry(i).or_insert(i32::MIN);
+            *e = (*e).max(y2.div_euclid(2));
+        }
+    }
     let n = rg.n;
     let fx = rg.fx;
     // footprint pixels per building (water never), and how much of it lies on
-    // the railway (on the ground or on a viaduct) and under any deck
+    // the railway (on the ground or on a viaduct)
     let mut pix: HashMap<u32, Vec<usize>> = HashMap::new();
     let mut on_rail: HashMap<u32, u32> = HashMap::new();
-    let mut under_deck: HashMap<u32, u32> = HashMap::new();
     for i in 0..n * n {
         let k = fx.bldg[i];
         if k == 0 || cols[i].out || cols[i].flags & CF_WATER != 0 {
@@ -1172,9 +1250,6 @@ pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay, decks: &crate::in
         if fx.rail[i] != 0 || decks.rail[i] || cols[i].flags & CF_RAIL != 0 {
             *on_rail.entry(k).or_default() += 1;
         }
-        if deck_bottom[i] != i32::MAX {
-            *under_deck.entry(k).or_default() += 1;
-        }
     }
     let ids = Ids::get();
     let nn = n as i64;
@@ -1183,34 +1258,79 @@ pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay, decks: &crate::in
     for key in keys {
         let all = &pix[&key];
         let r = fx.bld[key as usize];
-        // a footprint mostly over the railway is a station roof: 基盤地図情報
-        // sheds there are the platform canopies infra.rs already draws, other
-        // buildings become a roof on pillars over the tracks
+        // a footprint mostly over the railway: a station building. 基盤地図情報
+        // sheds there, and roofs low over the tracks (PLATEAU's platform
+        // roofs), are the platform canopies infra.rs already draws; a taller
+        // building stands over the tracks (a department store over its
+        // terminal, a station building on a deck over the lines): open below
+        // a floor 7 m above the tracks (above any platform canopy or viaduct
+        // there), on pillars set on the platforms and the ground
         let station = on_rail.get(&key).copied().unwrap_or(0) * 10 >= all.len() as u32 * 3;
-        // under a viaduct (shops under the tracks, under an expressway); a deck
-        // that only touches the building (a footbridge into its 2nd floor) does not cut it
-        let clip = !station && under_deck.get(&key).copied().unwrap_or(0) * 10 >= all.len() as u32 * 3;
         if station && r.src == 3 {
             continue;
         }
-        // railways and roads on structures keep their columns (a station roof spans them)
-        let ps: Vec<usize> = all.iter().copied().filter(|&i| station || cols[i].flags & (CF_RAIL | CF_ROAD) == 0).collect();
+        let raised_px = |i: usize| station && (fx.rail[i] != 0 || decks.rail[i] || deck_bottom[i] != i32::MAX || cols[i].flags & (CF_RAIL | CF_ROAD) != 0);
+        let mut deck_y = i32::MIN;
+        if station {
+            let top_all = SEA_Y + (r.base + r.height.max(2.5)).round() as i32;
+            for &i in all.iter().filter(|&&i| raised_px(i)) {
+                // 7 m over the tracks or the road, 6 blocks over a deck (a viaduct,
+                // a footbridge) passing under the building
+                deck_y = deck_y.max(cols[i].top_y() + 7);
+                if let Some(&y) = deck_top.get(&(i as u32)) {
+                    deck_y = deck_y.max(y + 6);
+                }
+            }
+            // too low to stand over the tracks: a platform roof
+            if top_all < deck_y + 3 {
+                continue;
+            }
+        }
+        // railways and roads keep their columns (a station roof spans them, an
+        // open shed is a roof over a road: a fuel station, a toll gate)
+        let shed = r.roof == features::R_OPEN;
+        let ps: Vec<usize> = all.iter().copied().filter(|&i| station || shed || cols[i].flags & (CF_RAIL | CF_ROAD) == 0).collect();
         if ps.is_empty() {
             continue;
         }
-        let mut m = materials(&r);
-        if station {
-            // light platform roofing on slim steel-grey pillars
-            m.roof = b("smooth_stone");
-            m.frame = b("light_gray_concrete");
-        }
+        // raised: over the railway or a road, and within 6 m of it (the strips
+        // between the tracks under the building)
+        let raised_v: Vec<bool> = if station {
+            let idx: HashMap<usize, usize> = ps.iter().enumerate().map(|(k, &i)| (i, k)).collect();
+            let mut d = vec![u8::MAX; ps.len()];
+            let mut q = std::collections::VecDeque::new();
+            for (k, &i) in ps.iter().enumerate() {
+                if raised_px(i) {
+                    d[k] = 0;
+                    q.push_back(k);
+                }
+            }
+            while let Some(k) = q.pop_front() {
+                if d[k] >= 6 {
+                    continue;
+                }
+                let i = ps[k] as i64;
+                for dd in [-1i64, 1, -nn, nn] {
+                    if let Some(&kk) = idx.get(&((i + dd) as usize)) {
+                        if d[kk] == u8::MAX {
+                            d[kk] = d[k] + 1;
+                            q.push_back(kk);
+                        }
+                    }
+                }
+            }
+            d.iter().map(|&v| v != u8::MAX).collect()
+        } else {
+            vec![false; ps.len()]
+        };
+        let m = materials(&r);
         let base = SEA_Y + r.base.round() as i32;
         let height = r.height.max(2.5);
         let storeys = (r.storeys as i32).max(1);
         let top = base + height.round().max(2.0) as i32; // eave / flat roof level
         let sh = ((height / storeys as f32).floor() as i32).clamp(2, 6); // storey height
         let inb = |j: i64| -> bool { j >= 0 && (j as usize) < n * n && fx.bldg[j as usize] == key };
-        let open = r.roof == features::R_OPEN || station;
+        let open = r.roof == features::R_OPEN;
         // roof height of every pixel: LOD2 surfaces (gaps filled from the
         // nearest roof pixel of the same building), gable or flat
         let local: HashMap<usize, usize> = ps.iter().enumerate().map(|(k, &i)| (i, k)).collect();
@@ -1251,9 +1371,11 @@ pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay, decks: &crate::in
                 }
                 _ => top + 1,
             };
-            // under a viaduct: the roof just below the deck (a station roof stays above it)
+            // under a viaduct: the roof just below the deck (a station roof stays
+            // above it); a building only partly under it is cut there, never
+            // through the deck
             let db = deck_bottom[i];
-            if db != i32::MAX && db > base && clip && ry >= db {
+            if db != i32::MAX && db > base && !station && ry >= db {
                 ry = db - 1;
             }
             roof.push(ry);
@@ -1262,12 +1384,24 @@ pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay, decks: &crate::in
         for (k, &i) in ps.iter().enumerate() {
             let (x, z) = ((i % n) as i64, (i / n) as i64);
             let roof_y = roof[k];
-            // what the roof stands on: the ground, or a deck / platform below it
-            let floor = if station { ov.v[i].iter().map(|e| e.0).filter(|&y| y < roof_y).max().unwrap_or(i32::MIN).max(cols[i].top_y()) } else { base };
-            if roof_y <= floor + 1 || (station && roof_y < floor + 4) {
-                continue; // no room (under a deck, or a station roof below its platform)
+            // the part of a station building over the tracks (or a road) stands
+            // on a floor at `deck_y`, open below
+            let raised = raised_v[k];
+            // what the roof stands on: the ground, the road under a shed, or that floor
+            let over_way = !station && cols[i].flags & (CF_RAIL | CF_ROAD) != 0;
+            let floor = if raised {
+                deck_y
+            } else if over_way {
+                cols[i].top_y() + 1
+            } else {
+                base
+            };
+            if roof_y <= floor + 1 || ((raised || over_way) && roof_y < floor + 4) {
+                continue; // no room (under a deck, or a roof below the road under it)
             }
-            if !station {
+            if over_way || raised {
+                cols[i].flags |= CF_NO_TREE;
+            } else {
                 // ground: floor slab at `base`, terrain above it removed
                 let c = &mut cols[i];
                 c.g = base;
@@ -1276,36 +1410,57 @@ pub fn buildings(rg: &Gen, cols: &mut [Col], ov: &mut Overlay, decks: &crate::in
                 c.sub = ids.stone;
                 c.sub_n = 2;
                 c.flags |= CF_BLDG | CF_NO_TREE | CF_NO_PLANT;
-            } else {
-                cols[i].flags |= CF_NO_TREE;
+            }
+            if raised {
+                // the floor over the tracks, on pillars every 9 m down to the
+                // platforms and the ground (never on a track or a road)
+                ov.put(i, deck_y, m.floor);
+                if x.rem_euclid(9) == 0 && z.rem_euclid(9) == 0 && !matches!(fx.rail[i], 1..=3) && cols[i].flags & (CF_ROAD | CF_RAIL) == 0 && deck_bottom[i] == i32::MAX && !deck_top.contains_key(&(i as u32)) {
+                    for y in cols[i].top_y() + 1..deck_y {
+                        if ov.get(i, y).is_none() {
+                            ov.put(i, y, m.frame);
+                        }
+                    }
+                }
             }
             // the wall is exposed above the lowest neighbouring roof (the
             // ground outside the footprint), so set-backs, towers on a podium
-            // and courtyards get facades instead of open floors
+            // and courtyards get facades instead of open floors; next to the
+            // raised part it goes down to the ground under that part's floor
             let mut outer = false;
             let mut lo = roof_y;
+            let mut by_raised = false;
+            let (mut out_x, mut out_z) = (false, false);
             for (dx, dz) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
                 let (xx, zz) = (x + dx, z + dz);
                 if xx < 0 || zz < 0 || xx >= nn || zz >= nn {
                     continue;
                 }
                 match local.get(&((zz * nn + xx) as usize)) {
-                    Some(&kk) => lo = lo.min(roof[kk]),
+                    Some(&kk) => {
+                        lo = lo.min(roof[kk]);
+                        by_raised |= !raised && raised_v[kk];
+                    }
                     None => {
                         // outside the footprint, or a part of it that is not drawn (tracks, water)
                         outer |= !inb(zz * nn + xx);
                         lo = floor;
+                        if dx != 0 {
+                            out_x = true;
+                        } else {
+                            out_z = true;
+                        }
                     }
                 }
             }
             for y in floor + 1..roof_y {
-                if y > lo {
+                if y > lo || (by_raised && y <= deck_y) {
                     let level = (y - base - 1).rem_euclid(sh);
                     let window_row = level == 1 || (sh >= 4 && level == 2);
-                    let pillar = (x + z) % 4 == 0;
                     let blk = if open {
-                        // pillars, never on the tracks
-                        if pillar && !(station && matches!(fx.rail[i], 1..=3)) { m.frame } else { continue }
+                        // a shed: pillars on a 4 m grid and at its corners, never on the road
+                        let pillar = (x.rem_euclid(4) == 0 && z.rem_euclid(4) == 0) || (out_x && out_z);
+                        if pillar && !over_way { m.frame } else { continue }
                     } else if y > top {
                         m.wall // gable end, rooftop structures
                     } else if window_row && (x + z) % 3 != 0 && r.usage != features::U_GREENHOUSE {

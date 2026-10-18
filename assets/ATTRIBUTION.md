@@ -14,6 +14,8 @@
 | 高解像度土地利用土地被覆図 日本域 2024 年（ver.25.04） | JAXA | 2024JPN v25.04 | 土地被覆（水田・畑・ソーラー・温室など） | 「提供：高解像度土地利用土地被覆図（JAXA）を加工して作成」 | 出典明示で利用可。**商用利用は事前に JAXA への連絡が必要** |
 | 静岡県森林資源解析データ（林相識別図以外：単木ポイント） | 静岡県 | 天竜・静岡・富士・伊豆計画区、R1〜R3 計測 | 人工林（スギ・ヒノキ）1 本ごとの位置・樹高・樹種 | 「静岡県森林資源解析データ（静岡県）を加工して作成」 | 公共データ利用規約（第 1.0 版）＝ CC BY 4.0 互換 |
 | VIRTUAL SHIZUOKA 点群データ（2021 年度 LP オリジナル） | 静岡県 | 静岡駅周辺 ±2 km、牧之原台地 ±2 km の 319 タイル | 樹冠高（樹木の位置と高さ） | 「静岡県 VIRTUAL SHIZUOKA 点群データを加工して作成」 | CC BY 4.0 |
+| High Resolution Canopy Height Maps v2（CHMv2） | Meta、World Resources Institute（WRI） | 2026 年版（z10 タイル 64 枚）、2026-10-18 に AWS Open Data Registry（https://registry.opendata.aws/dataforgood-fb-forestsv2）から取得 | 静岡県の計測範囲外の、森林以外（市街地・公園・農地・河川敷など）の樹木の位置と高さ | 「Meta and World Resources Institute (WRI) - 2026. Version 2 High Resolution Canopy Height Maps (CHMv2). Source imagery for CHM © 2016 Vantor」を加工して作成 | CC BY 4.0 |
+| 都道の街路樹（23 区・多摩地域） | 東京都建設局 | 東京都オープンデータカタログ、2026-10-18 取得（23 区 2025-02-20 更新、多摩地域 2026-04-26 更新） | 都道の街路樹 1 本ごとの位置・樹種・樹高 | 「都道の街路樹（東京都建設局）を加工して作成」 | CC BY 4.0 |
 | ETOPO 2022 15 Arc-Second Global Relief Model（ice surface, N45E135 タイル） | 米国海洋大気庁（NOAA）国立環境情報センター（NCEI） | 2022 年版、2026 年 10 月取得 | 海底地形（水深） | 「NOAA National Centers for Environmental Information. 2022: ETOPO 2022 15 Arc-Second Global Relief Model. doi:10.25921/fd45-gt74」 | パブリックドメイン（米国政府の著作物。出典の引用を推奨） |
 
 ※ 基盤地図情報・湖沼データは測量法上の基本測量成果です。地図として刊行・公開する場合は同法第 29・30 条の

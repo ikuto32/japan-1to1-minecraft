@@ -233,7 +233,8 @@ pub fn write(path: &Path, fmt: Fmt, w: usize, h: usize, data: &[u8], x0: i64, z0
     Ok(true)
 }
 
-/// Reader for files produced by `write`.
+/// Reader for files produced by `write`, and for other tiled (512²) deflate
+/// GeoTIFFs (any page: a mask page has 1 bit per sample).
 pub struct Reader {
     data: memmap2::Mmap,
     pub w: usize,
@@ -241,19 +242,37 @@ pub struct Reader {
     pub fmt: Fmt,
     offs: Vec<u32>,
     counts: Vec<u32>,
+    predictor: u32,
+    /// bits per sample (1 for a mask)
+    pub bps: usize,
+    /// GeoTIFF placement: x and y of the top-left corner, pixel width and height
+    pub geo: Option<[f64; 4]>,
 }
 
 impl Reader {
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_page(path, 0)
+    }
+
+    /// Open page `page` (0 = the first image directory).
+    pub fn open_page(path: &Path, page: usize) -> Result<Self> {
         let f = std::fs::File::open(path)?;
         let data = unsafe { memmap2::Mmap::map(&f)? };
         if &data[..4] != b"II*\0" {
             bail!("not a little-endian TIFF: {}", path.display());
         }
-        let ifd = u32::from_le_bytes(data[4..8].try_into()?) as usize;
+        let mut ifd = u32::from_le_bytes(data[4..8].try_into()?) as usize;
+        for _ in 0..page {
+            let n = u16::from_le_bytes(data[ifd..ifd + 2].try_into()?) as usize;
+            ifd = u32::from_le_bytes(data[ifd + 2 + n * 12..ifd + 6 + n * 12].try_into()?) as usize;
+            if ifd == 0 {
+                bail!("{}: no page {page}", path.display());
+            }
+        }
         let n = u16::from_le_bytes(data[ifd..ifd + 2].try_into()?) as usize;
         let (mut w, mut h, mut bps, mut offs, mut counts) = (0, 0, 0, Vec::new(), Vec::new());
-        let mut sfmt = 1;
+        let (mut sfmt, mut predictor, mut tile_w) = (1, 1, TILE as u32);
+        let (mut scale, mut tie): (Vec<f64>, Vec<f64>) = (Vec::new(), Vec::new());
         for i in 0..n {
             let e = ifd + 2 + i * 12;
             let tag = u16::from_le_bytes(data[e..e + 2].try_into()?);
@@ -281,9 +300,23 @@ impl Reader {
                 324 => offs = vals(&data),
                 325 => counts = vals(&data),
                 339 => sfmt = vals(&data)[0],
+                317 => predictor = vals(&data)[0],
+                322 => tile_w = vals(&data)[0],
+                33550 | 33922 if ty == 12 => {
+                    let v: Vec<f64> = (0..count).map(|k| f64::from_le_bytes(data[p + 8 * k..p + 8 * k + 8].try_into().unwrap())).collect();
+                    if tag == 33550 {
+                        scale = v
+                    } else {
+                        tie = v
+                    }
+                }
                 _ => {}
             }
         }
+        if tile_w as usize != TILE {
+            bail!("{}: tiles of {tile_w} px (only {TILE} supported)", path.display());
+        }
+        let geo = (scale.len() >= 2 && tie.len() >= 6).then(|| [tie[3] - tie[0] * scale[0], tie[4] + tie[1] * scale[1], scale[0], scale[1]]);
         let fmt = match (bps, sfmt) {
             (32, 3) => Fmt::F32,
             (32, _) => Fmt::U32,
@@ -293,7 +326,7 @@ impl Reader {
         if offs.is_empty() {
             return Err(anyhow!("no tiles in {}", path.display()));
         }
-        Ok(Reader { data, w, h, fmt, offs, counts })
+        Ok(Reader { data, w, h, fmt, offs, counts, predictor, bps, geo })
     }
 
     /// Decode one 512×512 tile (raw little-endian sample bytes).
@@ -306,6 +339,9 @@ impl Reader {
         let (o, c) = (self.offs[i] as usize, self.counts[i] as usize);
         let mut out = Vec::with_capacity(TILE * TILE * self.fmt.bytes());
         flate2::read::ZlibDecoder::new(&self.data[o..o + c]).read_to_end(&mut out)?;
+        if self.predictor == 1 || self.bps == 1 {
+            return Ok(out); // 1-bit masks: 64 bytes per row, most significant bit first
+        }
         let rb = TILE * self.fmt.bytes();
         let mut tmp = Vec::new();
         for r in 0..TILE {

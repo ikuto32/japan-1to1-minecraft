@@ -7,7 +7,7 @@ Shizuoka and Yamanashi prefectures together with Tokyo, Kanagawa, eastern Aichi 
 Authority of Japan (GSI) and open data for roads, railways, buildings and vegetation.
 
 - Area: latitude 34–36°N, longitude 137–140°E (about 270 km × 220 km, sea included)
-- About 1.1 TB in total (470 GB of downloads) — **download only the area you want, tile by tile (about 10 km square)**
+- About 1.1 TB in total (475 GB of downloads) — **download only the area you want, tile by tile (about 10 km square)**
 - 🗾 **[Tile selector](https://ikuto32.github.io/japan-1to1-minecraft/tiles.html)** · 🧭 **[Teleport command maker](https://ikuto32.github.io/japan-1to1-minecraft/teleport.html)**
 
 ![Around Shizuoka Station (left: the world from above, right: GSI aerial photo)](docs/check/01_shizuoka_station.png)
@@ -23,7 +23,7 @@ Authority of Japan (GSI) and open data for roads, railways, buildings and vegeta
 | Railways | Shinkansen (slab track), JR and private lines with rails; station platforms with tactile strips and roofs |
 | Buildings | About 16 million. PLATEAU 3D city models (150 municipalities, LOD2 roof shapes) and GSI building outlines. Walls, windows and roofs differ by use; every storey has a floor and you can walk in |
 | Land use | Rice paddies, fields, tea plantations (rows), orchards, greenhouses, solar farms, airports (runway markings), ports, dams, parks, cemeteries, parking lots… |
-| Vegetation | Species, density, height, undergrowth and biome for about 350 plant communities of the national vegetation map; no tall trees above the tree line. In Shizuoka, 89 million planted cedars and cypresses at their measured (airborne LiDAR) positions and heights, and point-cloud canopies around Shizuoka Station and Makinohara |
+| Vegetation | Species, density, height, undergrowth and biome for about 350 plant communities of the national vegetation map; no tall trees above the tree line. In Shizuoka, 89 million planted cedars and cypresses at their measured (airborne LiDAR) positions and heights, and point-cloud canopies around Shizuoka Station and Makinohara. Outside Shizuoka, trees in towns, parks, fields and riversides stand where the Meta/WRI satellite canopy height map (CHMv2) shows them, and about 230,000 street trees of Tokyo's metropolitan roads at their surveyed positions, species and heights |
 | Sea floor | The GSI 1 m DEM's own sea bed where it has one (airborne laser bathymetry along some coasts, dredged docks), elsewhere ETOPO 2022 (15″ grid) eased in from the coastline; ports and canals are harbour-deep (3–12 m) off their quays, where the coarse grid shows land; what lies deeper than the bottom of the world (about 270 m) is cut flat |
 | Lakes | The Fuji Five Lakes and Lake Ashi have their surveyed depths (Lake Motosu: 121 m); other lakes and rivers shelve from the banks |
 | In-game tools | A data pack is included: `/function jp:menu` for landmarks, an elevation and latitude/longitude display and more ([below](#in-game-menu-data-pack)) |
@@ -52,11 +52,11 @@ Authority of Japan (GSI) and open data for roads, railways, buildings and vegeta
    - **macOS / Linux**: paste it into a terminal
 
    ```powershell
-   curl.exe -L -o download.ps1 https://github.com/ikuto32/japan-1to1-minecraft/releases/download/v1.0.0/download.ps1
+   curl.exe -L -o download.ps1 https://github.com/ikuto32/japan-1to1-minecraft/releases/download/v1.1.0/download.ps1
    powershell -ExecutionPolicy Bypass -File download.ps1 -Tiles x-20480_z112640,x-10240_z112640
    ```
    ```bash
-   curl -LO https://github.com/ikuto32/japan-1to1-minecraft/releases/download/v1.0.0/download.sh
+   curl -LO https://github.com/ikuto32/japan-1to1-minecraft/releases/download/v1.1.0/download.sh
    bash download.sh x-20480_z112640 x-10240_z112640
    ```
    This creates the folder `japan_dem_1m` in your Minecraft `saves` folder (on Windows `%APPDATA%\.minecraft\saves`).
@@ -116,11 +116,13 @@ If you try to go to a tile you have not downloaded, the data pack commands cance
 
 - Building interiors are simple: floors and an entrance, no walls or stairs inside. Heights of buildings outside PLATEAU cities are estimated.
 - Roads and railways missing from OpenStreetMap are not there. Where the GSI road edges are missing, roads have the standard width of their class.
+- Where an OSM road line runs into a building, a road that only clips the building's edge cuts through it; a road running well inside a building
+  (a passage, a car park) stops at its walls. Where OSM lines are off the real track (forest roads in the mountains), a road can step with the terrain.
 - Suspension and truss bridge superstructures and complex interchanges are simplified; undersea tunnels are not drawn. The heights of
   viaducts and depths of subways follow the OSM `layer` (e.g. layer -3 ≈ 24 m deep), not surveyed values.
 - The sea floor has the resolution of ETOPO 2022 (about 460 m); depths beyond about 270 m are flattened. Harbour depths are estimated from the shore (quays), not charted.
 - The vegetation and land-cover maps can be older than today's land use.
-- Tree heights come from point clouds only in Shizuoka (elsewhere: typical heights per plant community).
+- Tree positions and heights are measured (point clouds) only in Shizuoka. Elsewhere, trees outside forests come from the satellite canopy height map (CHMv2), which misses many small trees (outside forests it finds about a third of the canopy that Shizuoka's point clouds show), with heights calibrated against those point clouds; forests have typical heights per plant community, and street trees are mapped only along Tokyo's metropolitan roads.
 
 ## Sources and licences
 
@@ -135,6 +137,8 @@ The world was made by processing the data below. If you redistribute or publish 
 | 1:25,000 vegetation map (2024) | Ministry of the Environment, Biodiversity Center (環境省) | Use and redistribution with attribution |
 | High-resolution land use and land cover map (2024, v25.04) | JAXA | Use with attribution; **commercial use requires prior notice to JAXA** |
 | Forest resource analysis data, VIRTUAL SHIZUOKA point clouds | Shizuoka Prefecture (静岡県) | Public Data License 1.0 / CC BY 4.0 |
+| High Resolution Canopy Height Maps v2 (CHMv2) | Meta and World Resources Institute (WRI); source imagery © 2016 Vantor | CC BY 4.0 |
+| Street trees of metropolitan roads (都道の街路樹) | Tokyo Metropolitan Government, Bureau of Construction (東京都建設局) | CC BY 4.0 |
 | ETOPO 2022 15 Arc-Second Global Relief Model (sea floor) | NOAA National Centers for Environmental Information | Public domain (U.S. government work); cite doi:10.25921/fd45-gt74 |
 
 - **OpenStreetMap (ODbL)**: the world is a "Produced Work" under the ODbL. Credit "© OpenStreetMap contributors" and state
@@ -164,7 +168,7 @@ The vegetation / land use → block mapping is adjustable in `config/landcover_m
 1. `python tools/set_repo.py OWNER/REPO` points `release.json` and the links in both READMEs at your repository (the tag is `tag` in `release.json`).
    Then `python tools/gen_datapack.py` puts the link to the web pages into the in-game menu.
 2. `python tools/package_release.py --out D:\release` writes one zip per tile (each under 2 GiB), `japan1m_base.zip`, the
-   manifests (`tiles.tsv`, `tiles.json`) and the download scripts (about 470 GB in total), and updates `docs/data/tiles.json`.
+   manifests (`tiles.tsv`, `tiles.json`) and the download scripts (about 475 GB in total), and updates `docs/data/tiles.json`.
    Add `--from-build` to rebuild each tile before zipping it, if the world folder has been played in (about 2 hours on
    32 threads; each tile built at the same time needs about 6 GB of memory, lower `--jobs` if that is too much).
    An interrupted run continues where it stopped when you run the same command again, and after changing the repository

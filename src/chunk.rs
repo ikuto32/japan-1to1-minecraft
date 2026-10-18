@@ -493,9 +493,10 @@ pub struct Extra<'a> {
     pub structs: Vec<VFeat>,
 }
 
-/// Build one region file (None if no chunk of it lies inside the area).
-pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32) -> Result<Option<(Vec<u8>, usize)>> {
-    use crate::world::{tadd, T_BLDG, T_COLS, T_DECOR, T_LIGHT, T_NBT, T_STRUCT, T_ZLIB};
+/// The generator passes of a region window: terrain columns, roads, rails
+/// and structures, buildings, land-use patterns, trees and plants.
+pub fn generate(inp: &RegionInput, ex: &Extra) -> (Vec<Col>, Overlay, crate::infra::Decks) {
+    use crate::world::{tadd, T_BLDG, T_COLS, T_DECOR, T_STRUCT};
     let g = Gen { n: RW, ox: inp.ox, oz: inp.oz, h: &inp.h, k: &inp.k, fx: &ex.fw, st: ex.st };
     let t = std::time::Instant::now();
     let mut cols = g.columns();
@@ -509,10 +510,17 @@ pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32)
     tadd(&T_BLDG, t);
     let t = std::time::Instant::now();
     rgen::patterns(&g, &mut cols, &mut ov);
-    rgen::trees(&g, &cols, &mut ov);
+    rgen::trees(&g, &cols, &mut ov, &decks);
     rgen::plants(&g, &cols, &mut ov);
     ov.finish();
     tadd(&T_DECOR, t);
+    (cols, ov, decks)
+}
+
+/// Build one region file (None if no chunk of it lies inside the area).
+pub fn build_region(inp: &RegionInput, ex: &Extra, rx: i64, rz: i64, level: u32) -> Result<Option<(Vec<u8>, usize)>> {
+    use crate::world::{tadd, T_LIGHT, T_NBT, T_ZLIB};
+    let (mut cols, ov, _) = generate(inp, ex);
     let t = std::time::Instant::now();
     let mut pre = Pre::new();
     // grass that the game would turn to dirt on its random ticks (shut off
